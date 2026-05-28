@@ -18,9 +18,9 @@ final class Assets {
 			return;
 		}
 
-		$asset_file = BS_DIR . 'build/admin/index.asset.php';
-		$script_url = BS_URL . 'build/admin/index.js';
-		$style_url  = BS_URL . 'build/admin/index.css';
+		$asset_file = BS_DIR . 'build/index.asset.php';
+		$script_url = BS_URL . 'build/index.js';
+		$style_url  = BS_URL . 'build/style-index.css';
 
 		if ( ! is_readable( $asset_file ) ) {
 			add_action( 'admin_notices', [ $this, 'render_build_notice' ] );
@@ -37,7 +37,7 @@ final class Assets {
 			true
 		);
 
-		if ( file_exists( BS_DIR . 'build/admin/index.css' ) ) {
+		if ( file_exists( BS_DIR . 'build/style-index.css' ) ) {
 			wp_enqueue_style(
 				self::HANDLE,
 				$style_url,

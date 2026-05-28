@@ -50,8 +50,46 @@ final class PostMapperTest extends TestCase {
 		self::assertSame( 'publish', $plan->post_args['post_status'] );
 		self::assertSame( 'post_1', $plan->meta['_beehiiv_post_id'] );
 		self::assertSame( 'https://cdn/x.jpg', $plan->featured_image_url );
-		self::assertSame( 'category', $plan->taxonomy );
-		self::assertSame( [ 'news' ], $plan->term_names );
+		self::assertCount( 1, $plan->term_assignments );
+		self::assertSame( 'category', $plan->term_assignments[0]['taxonomy'] );
+		self::assertSame( [ 'news' ], $plan->term_assignments[0]['term_names'] );
+	}
+
+	public function test_fixed_term_assignment_is_included(): void {
+		$plan = $this->mapper()->plan(
+			$this->beehiiv(),
+			$this->defaults(
+				[
+					'tag_target'     => 'post_tag',
+					'fixed_taxonomy' => 'category',
+					'fixed_term_id'  => 99,
+				]
+			)
+		);
+
+		$by_tax = array_column( $plan->term_assignments, null, 'taxonomy' );
+		self::assertArrayHasKey( 'post_tag', $by_tax );
+		self::assertArrayHasKey( 'category', $by_tax );
+		self::assertSame( [ 99 ], $by_tax['category']['term_ids'] );
+		self::assertSame( [ 'news' ], $by_tax['post_tag']['term_names'] );
+	}
+
+	public function test_fixed_term_merges_when_same_taxonomy_as_tag_target(): void {
+		$plan = $this->mapper()->plan(
+			$this->beehiiv(),
+			$this->defaults(
+				[
+					'tag_target'     => 'category',
+					'fixed_taxonomy' => 'category',
+					'fixed_term_id'  => 99,
+				]
+			)
+		);
+
+		self::assertCount( 1, $plan->term_assignments );
+		self::assertSame( 'category', $plan->term_assignments[0]['taxonomy'] );
+		self::assertSame( [ 'news' ], $plan->term_assignments[0]['term_names'] );
+		self::assertSame( [ 99 ], $plan->term_assignments[0]['term_ids'] );
 	}
 
 	public function test_existing_post_with_same_hash_is_skipped(): void {

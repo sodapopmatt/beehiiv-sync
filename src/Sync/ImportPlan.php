@@ -17,9 +17,9 @@ final class ImportPlan {
 	public const ACTION_SKIP   = 'skip';
 
 	/**
-	 * @param array<string, mixed>  $post_args    Args for wp_insert_post / wp_update_post.
-	 * @param array<string, mixed>  $meta         Post meta to write.
-	 * @param string[]              $term_names   Term names to attach.
+	 * @param array<string, mixed>                                                $post_args    Args for wp_insert_post / wp_update_post.
+	 * @param array<string, mixed>                                                $meta         Post meta to write.
+	 * @param array<int, array{taxonomy:string, term_names:string[], term_ids:int[]}> $term_assignments  One entry per taxonomy.
 	 */
 	public function __construct(
 		public readonly string $action,
@@ -27,8 +27,7 @@ final class ImportPlan {
 		public readonly ?int $existing_post_id,
 		public readonly array $post_args,
 		public readonly array $meta,
-		public readonly string $taxonomy,
-		public readonly array $term_names,
+		public readonly array $term_assignments,
 		public readonly ?string $featured_image_url,
 		public readonly string $content_hash,
 		public readonly ?string $skip_reason = null,
@@ -41,8 +40,7 @@ final class ImportPlan {
 			existing_post_id: $existing_post_id,
 			post_args: [],
 			meta: [],
-			taxonomy: '',
-			term_names: [],
+			term_assignments: [],
 			featured_image_url: null,
 			content_hash: $content_hash,
 			skip_reason: $reason,

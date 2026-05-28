@@ -8,7 +8,7 @@ final class Schema {
 	public const OPTION = 'beehiiv_sync_settings';
 
 	public const AUDIENCES   = [ 'free', 'premium', 'all' ];
-	public const POST_STATUS = [ 'draft', 'pending', 'publish', 'private' ];
+	public const POST_STATUS = [ 'draft', 'pending', 'publish', 'private', 'future' ];
 	public const TAG_TARGETS = [ 'category', 'post_tag', 'none' ];
 	public const IMPORT_MODE = [ 'new', 'update', 'both' ];
 	public const FREQUENCY   = [ 'hourly', 'daily', 'weekly' ];
@@ -20,15 +20,17 @@ final class Schema {
 		return [
 			'schema_version' => 1,
 			'defaults'       => [
-				'post_type'       => 'post',
-				'post_status_map' => [
+				'post_type'           => 'post',
+				'post_status_map'     => [
 					'draft'     => 'draft',
-					'confirmed' => 'publish',
+					'confirmed' => 'draft',
 					'archived'  => 'draft',
 				],
 				'author_id'           => 0,
 				'audience'            => 'all',
-				'tag_target'          => 'category',
+				'tag_target'          => 'post_tag',
+				'fixed_taxonomy'      => '',
+				'fixed_term_id'       => 0,
 				'import_mode'         => 'both',
 				'reconcile_deletions' => false,
 			],
@@ -43,8 +45,6 @@ final class Schema {
 	}
 
 	/**
-	 * Merge user input with current settings, validating each leaf.
-	 *
 	 * @param array<string, mixed> $current
 	 * @param array<string, mixed> $input
 	 * @return array<string, mixed>
@@ -53,37 +53,7 @@ final class Schema {
 		$out = $current;
 
 		if ( isset( $input['defaults'] ) && is_array( $input['defaults'] ) ) {
-			$d   = $current['defaults'];
-			$in  = $input['defaults'];
-
-			if ( isset( $in['post_type'] ) ) {
-				$d['post_type'] = sanitize_key( (string) $in['post_type'] );
-			}
-			if ( isset( $in['author_id'] ) ) {
-				$d['author_id'] = max( 0, (int) $in['author_id'] );
-			}
-			if ( isset( $in['audience'] ) && in_array( $in['audience'], self::AUDIENCES, true ) ) {
-				$d['audience'] = $in['audience'];
-			}
-			if ( isset( $in['tag_target'] ) && in_array( $in['tag_target'], self::TAG_TARGETS, true ) ) {
-				$d['tag_target'] = $in['tag_target'];
-			}
-			if ( isset( $in['import_mode'] ) && in_array( $in['import_mode'], self::IMPORT_MODE, true ) ) {
-				$d['import_mode'] = $in['import_mode'];
-			}
-			if ( isset( $in['reconcile_deletions'] ) ) {
-				$d['reconcile_deletions'] = (bool) $in['reconcile_deletions'];
-			}
-			if ( isset( $in['post_status_map'] ) && is_array( $in['post_status_map'] ) ) {
-				foreach ( [ 'draft', 'confirmed', 'archived' ] as $key ) {
-					if ( isset( $in['post_status_map'][ $key ] )
-						&& in_array( $in['post_status_map'][ $key ], self::POST_STATUS, true ) ) {
-						$d['post_status_map'][ $key ] = $in['post_status_map'][ $key ];
-					}
-				}
-			}
-
-			$out['defaults'] = $d;
+			$out['defaults'] = self::sanitize_defaults( $current['defaults'], $input['defaults'] );
 		}
 
 		if ( isset( $input['schedule'] ) && is_array( $input['schedule'] ) ) {
@@ -110,5 +80,49 @@ final class Schema {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * @param array<string, mixed> $current
+	 * @param array<string, mixed> $in
+	 * @return array<string, mixed>
+	 */
+	public static function sanitize_defaults( array $current, array $in ): array {
+		$d = $current;
+
+		if ( isset( $in['post_type'] ) ) {
+			$d['post_type'] = sanitize_key( (string) $in['post_type'] );
+		}
+		if ( isset( $in['author_id'] ) ) {
+			$d['author_id'] = max( 0, (int) $in['author_id'] );
+		}
+		if ( isset( $in['audience'] ) && in_array( $in['audience'], self::AUDIENCES, true ) ) {
+			$d['audience'] = $in['audience'];
+		}
+		if ( isset( $in['tag_target'] ) && in_array( $in['tag_target'], self::TAG_TARGETS, true ) ) {
+			$d['tag_target'] = $in['tag_target'];
+		}
+		if ( isset( $in['fixed_taxonomy'] ) ) {
+			$d['fixed_taxonomy'] = sanitize_key( (string) $in['fixed_taxonomy'] );
+		}
+		if ( isset( $in['fixed_term_id'] ) ) {
+			$d['fixed_term_id'] = max( 0, (int) $in['fixed_term_id'] );
+		}
+		if ( isset( $in['import_mode'] ) && in_array( $in['import_mode'], self::IMPORT_MODE, true ) ) {
+			$d['import_mode'] = $in['import_mode'];
+		}
+		if ( isset( $in['reconcile_deletions'] ) ) {
+			$d['reconcile_deletions'] = (bool) $in['reconcile_deletions'];
+		}
+		if ( isset( $in['post_status_map'] ) && is_array( $in['post_status_map'] ) ) {
+			foreach ( [ 'draft', 'confirmed', 'archived' ] as $key ) {
+				if ( isset( $in['post_status_map'][ $key ] )
+					&& in_array( $in['post_status_map'][ $key ], self::POST_STATUS, true ) ) {
+					$d['post_status_map'][ $key ] = $in['post_status_map'][ $key ];
+				}
+			}
+		}
+
+		return $d;
 	}
 }

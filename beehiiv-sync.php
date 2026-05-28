@@ -26,6 +26,8 @@ define( 'BS_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BS_URL', plugin_dir_url( __FILE__ ) );
 define( 'BS_BASENAME', plugin_basename( __FILE__ ) );
 
+require_once BS_DIR . 'lib/action-scheduler/action-scheduler.php';
+
 $bs_autoload = BS_DIR . 'vendor/autoload.php';
 if ( is_readable( $bs_autoload ) ) {
 	require_once $bs_autoload;

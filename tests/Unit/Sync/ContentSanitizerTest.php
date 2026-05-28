@@ -32,4 +32,44 @@ final class ContentSanitizerTest extends TestCase {
 	public function test_empty_input_returns_empty(): void {
 		self::assertSame( '', ( new ContentSanitizer() )->sanitize( '' ) );
 	}
+
+	public function test_extracts_only_body_contents(): void {
+		$html = '<!DOCTYPE html><html><head><title>X</title></head><body><p>Hello</p></body></html>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html );
+		self::assertStringContainsString( 'Hello', $out );
+		self::assertStringNotContainsString( '<title>', $out );
+		self::assertStringNotContainsString( '<body', $out );
+	}
+
+	public function test_strips_style_block_and_contents(): void {
+		$html = '<html><head><style>:root { --color: red; }</style></head><body><p>Real content</p></body></html>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html );
+		self::assertStringContainsString( 'Real content', $out );
+		self::assertStringNotContainsString( '--color', $out );
+		self::assertStringNotContainsString( ':root', $out );
+	}
+
+	public function test_strips_script_block_and_contents(): void {
+		$html = '<body><p>hi</p><script>alert(1)</script></body>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html );
+		self::assertStringContainsString( 'hi', $out );
+		self::assertStringNotContainsString( 'alert', $out );
+		self::assertStringNotContainsString( '<script', $out );
+	}
+
+	public function test_strips_link_and_meta(): void {
+		$html = '<body><link rel="stylesheet" href="x"><meta name="x" content="y"><p>keep</p></body>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html );
+		self::assertStringContainsString( 'keep', $out );
+		self::assertStringNotContainsString( '<link', $out );
+		self::assertStringNotContainsString( '<meta', $out );
+	}
+
+	public function test_strips_doctype_when_no_body_wrapper(): void {
+		$html = '<!DOCTYPE html><p>orphan</p>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html );
+		self::assertStringContainsString( 'orphan', $out );
+		self::assertStringNotContainsString( '<!DOCTYPE', $out );
+		self::assertStringNotContainsString( '<!doctype', $out );
+	}
 }

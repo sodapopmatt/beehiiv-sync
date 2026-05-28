@@ -19,7 +19,7 @@ final class FakePostRepository implements PostRepository {
 	/** @var array<int, array<string, mixed>> */
 	public array $meta = [];
 
-	/** @var array<int, array{taxonomy:string, terms:string[]}> */
+	/** @var array<int, array<int, array{taxonomy:string, term_names:string[], term_ids:int[]}>> */
 	public array $terms = [];
 
 	/** @var array<int, string> */
@@ -36,8 +36,8 @@ final class FakePostRepository implements PostRepository {
 	}
 
 	public function insert( array $post_args ): int {
-		$id                     = $this->next_id++;
-		$this->inserted[ $id ]  = $post_args;
+		$id                    = $this->next_id++;
+		$this->inserted[ $id ] = $post_args;
 		return $id;
 	}
 
@@ -49,8 +49,12 @@ final class FakePostRepository implements PostRepository {
 		$this->meta[ $post_id ] = $meta;
 	}
 
-	public function set_terms( int $post_id, string $taxonomy, array $term_names ): void {
-		$this->terms[ $post_id ] = [ 'taxonomy' => $taxonomy, 'terms' => $term_names ];
+	public function set_terms( int $post_id, string $taxonomy, array $term_names, array $term_ids ): void {
+		$this->terms[ $post_id ][] = [
+			'taxonomy'   => $taxonomy,
+			'term_names' => $term_names,
+			'term_ids'   => $term_ids,
+		];
 	}
 
 	public function sideload_featured_image( int $post_id, string $image_url ): void {

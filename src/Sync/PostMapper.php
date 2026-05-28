@@ -7,16 +7,13 @@ use BeehiivSync\Api\Dto\BeehiivPost;
 
 /**
  * Pure transform: BeehiivPost + settings + (optional) existing post → ImportPlan.
- *
- * No WordPress calls. The processor is responsible for actually
- * touching the database based on the plan this returns.
  */
 final class PostMapper {
 
 	public function __construct( private readonly ContentSanitizer $sanitizer ) {}
 
 	/**
-	 * @param array<string, mixed> $settings_defaults  The `defaults` block from Schema.
+	 * @param array<string, mixed>                     $settings_defaults  The `defaults` block from Schema.
 	 * @param array{id:int, content_hash:?string}|null $existing
 	 */
 	public function plan( BeehiivPost $beehiiv, array $settings_defaults, ?array $existing = null ): ImportPlan {
@@ -38,9 +35,9 @@ final class PostMapper {
 			)
 		);
 
-		$existing_id   = $existing['id'] ?? null;
-		$import_mode   = (string) ( $settings_defaults['import_mode'] ?? 'both' );
-		$action        = $this->decide_action( $existing_id, $import_mode );
+		$existing_id = $existing['id'] ?? null;
+		$import_mode = (string) ( $settings_defaults['import_mode'] ?? 'both' );
+		$action      = $this->decide_action( $existing_id, $import_mode );
 
 		if ( $action === ImportPlan::ACTION_SKIP ) {
 			return ImportPlan::skip(
@@ -77,7 +74,8 @@ final class PostMapper {
 			$post_args['post_date_gmt'] = $publish_at;
 		}
 
-		$tags     = TagMapper::resolve( $beehiiv->content_tags, (string) ( $settings_defaults['tag_target'] ?? 'category' ) );
+		$term_assignments = $this->build_term_assignments( $beehiiv, $settings_defaults );
+
 		$audience = $beehiiv->audience !== '' ? $beehiiv->audience : ( isset( $beehiiv->content_html['premium'] ) && ! isset( $beehiiv->content_html['free'] ) ? 'premium' : 'free' );
 
 		$meta = [
@@ -94,11 +92,44 @@ final class PostMapper {
 			existing_post_id: $existing_id,
 			post_args: $post_args,
 			meta: $meta,
-			taxonomy: $tags['taxonomy'],
-			term_names: $tags['term_names'],
+			term_assignments: $term_assignments,
 			featured_image_url: $beehiiv->thumbnail_url,
 			content_hash: $content_hash,
 		);
+	}
+
+	/**
+	 * @param array<string, mixed> $settings_defaults
+	 * @return array<int, array{taxonomy:string, term_names:string[], term_ids:int[]}>
+	 */
+	private function build_term_assignments( BeehiivPost $beehiiv, array $settings_defaults ): array {
+		$assignments = [];
+
+		$tag_target = (string) ( $settings_defaults['tag_target'] ?? 'category' );
+		$tags       = TagMapper::resolve( $beehiiv->content_tags, $tag_target );
+		if ( $tags['taxonomy'] !== '' && $tags['term_names'] !== [] ) {
+			$assignments[ $tags['taxonomy'] ] = [
+				'taxonomy'   => $tags['taxonomy'],
+				'term_names' => $tags['term_names'],
+				'term_ids'   => [],
+			];
+		}
+
+		$fixed_tax = (string) ( $settings_defaults['fixed_taxonomy'] ?? '' );
+		$fixed_id  = (int) ( $settings_defaults['fixed_term_id'] ?? 0 );
+		if ( $fixed_tax !== '' && $fixed_id > 0 ) {
+			if ( isset( $assignments[ $fixed_tax ] ) ) {
+				$assignments[ $fixed_tax ]['term_ids'][] = $fixed_id;
+			} else {
+				$assignments[ $fixed_tax ] = [
+					'taxonomy'   => $fixed_tax,
+					'term_names' => [],
+					'term_ids'   => [ $fixed_id ],
+				];
+			}
+		}
+
+		return array_values( $assignments );
 	}
 
 	private function select_content( BeehiivPost $beehiiv ): string {
@@ -123,8 +154,7 @@ final class PostMapper {
 	 * @param array<string, mixed> $settings_defaults
 	 */
 	private function resolve_status( string $beehiiv_status, array $settings_defaults ): string {
-		$map      = is_array( $settings_defaults['post_status_map'] ?? null ) ? $settings_defaults['post_status_map'] : [];
-		$fallback = 'draft';
-		return (string) ( $map[ $beehiiv_status ] ?? $fallback );
+		$map = is_array( $settings_defaults['post_status_map'] ?? null ) ? $settings_defaults['post_status_map'] : [];
+		return (string) ( $map[ $beehiiv_status ] ?? 'draft' );
 	}
 }

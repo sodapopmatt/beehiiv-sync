@@ -5,10 +5,6 @@ namespace BeehiivSync\Sync;
 
 /**
  * The narrow seam between the sync logic and WordPress.
- *
- * Everything the processor needs to read or write on the WP side
- * goes through this interface. Lets us unit-test ItemProcessor
- * with a pure in-memory fake.
  */
 interface PostRepository {
 
@@ -33,9 +29,14 @@ interface PostRepository {
 	public function set_meta( int $post_id, array $meta ): void;
 
 	/**
+	 * Apply one taxonomy assignment. `term_names` are resolved/created;
+	 * `term_ids` are used as-is. The combined set replaces existing terms
+	 * in that taxonomy on the post.
+	 *
 	 * @param string[] $term_names
+	 * @param int[]    $term_ids
 	 */
-	public function set_terms( int $post_id, string $taxonomy, array $term_names ): void;
+	public function set_terms( int $post_id, string $taxonomy, array $term_names, array $term_ids ): void;
 
 	public function sideload_featured_image( int $post_id, string $image_url ): void;
 }

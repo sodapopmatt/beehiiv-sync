@@ -1,0 +1,55 @@
+.beehiiv-sync {
+	max-width: 960px;
+
+	h1 {
+		margin-bottom: 1rem;
+	}
+
+	.components-card {
+		max-width: 100%;
+	}
+
+	.bs-form-row {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 20px;
+		align-items: end;
+
+		.components-base-control,
+		.components-select-control {
+			width: 100%;
+			margin-bottom: 0;
+		}
+
+		select {
+			width: 100%;
+		}
+	}
+
+	.bs-status-row {
+		display: grid;
+		grid-template-columns: 1fr 220px;
+		gap: 16px;
+		align-items: center;
+		padding: 8px 0;
+
+		& + & {
+			border-top: 1px solid #e0e0e0;
+		}
+
+		.components-base-control,
+		.components-select-control {
+			width: 100%;
+			margin-bottom: 0;
+		}
+
+		.components-checkbox-control__label {
+			font-weight: 500;
+		}
+	}
+
+	.bs-section-label {
+		font-weight: 600;
+		margin-bottom: 4px;
+	}
+}

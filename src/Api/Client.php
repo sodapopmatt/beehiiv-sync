@@ -8,6 +8,7 @@ use BeehiivSync\Api\Dto\PostPage;
 use BeehiivSync\Api\Exceptions\ApiException;
 use BeehiivSync\Api\Exceptions\AuthException;
 use BeehiivSync\Api\Exceptions\RateLimitException;
+use BeehiivSync\Support\Logger;
 
 final class Client {
 
@@ -51,10 +52,6 @@ final class Client {
 			$params
 		);
 
-		if ( isset( $query['expand'] ) && is_array( $query['expand'] ) ) {
-			$query['expand'] = implode( ',', $query['expand'] );
-		}
-
 		$response = $this->request(
 			'GET',
 			'/publications/' . rawurlencode( $this->publication_id ) . '/posts',
@@ -80,7 +77,11 @@ final class Client {
 	private function request( string $method, string $path, array $query = [] ): array {
 		$url = $this->base_url . $path;
 		if ( $query !== [] ) {
-			$url .= '?' . http_build_query( $query );
+			// Beehiiv requires array params as `expand[]=a&expand[]=b` (no numeric index).
+			// http_build_query emits `expand%5B0%5D=...` by default — strip the index.
+			$qs  = http_build_query( $query );
+			$qs  = preg_replace( '/%5B\d+%5D=/', '%5B%5D=', $qs );
+			$url .= '?' . $qs;
 		}
 
 		$args = [
@@ -95,6 +96,18 @@ final class Client {
 
 		$response = $this->transport->request( $url, $args );
 		$status   = $response['status'];
+
+		if ( class_exists( Logger::class ) ) {
+			Logger::info(
+				'beehiiv.request',
+				[
+					'method'      => $method,
+					'url'         => $url,
+					'status'      => $status,
+					'body_length' => strlen( $response['body'] ?? '' ),
+				]
+			);
+		}
 
 		if ( $status === 401 || $status === 403 ) {
 			throw new AuthException(

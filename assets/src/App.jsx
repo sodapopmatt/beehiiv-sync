@@ -1,7 +1,9 @@
 import { useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
-import { Notice, Spinner } from '@wordpress/components';
+import { Notice, Spinner, TabPanel } from '@wordpress/components';
 import Connect from './pages/Connect';
+import Import from './pages/Import';
+import Logs from './pages/Logs';
 import { api } from './api';
 
 export default function App() {
@@ -32,10 +34,26 @@ export default function App() {
 		return <Spinner />;
 	}
 
+	const tabs = [
+		{ name: 'connect', title: __( 'Connect', 'beehiiv-sync' ) },
+		{ name: 'import', title: __( 'Import', 'beehiiv-sync' ) },
+		{ name: 'logs', title: __( 'Logs', 'beehiiv-sync' ) },
+	];
+
 	return (
 		<div className="beehiiv-sync">
 			<h1>{ __( 'Beehiiv Sync', 'beehiiv-sync' ) }</h1>
-			<Connect status={ status } onChange={ refresh } />
+			<TabPanel tabs={ tabs } initialTabName={ status.configured ? 'import' : 'connect' }>
+				{ ( tab ) => {
+					if ( tab.name === 'connect' ) {
+						return <Connect status={ status } onChange={ refresh } />;
+					}
+					if ( tab.name === 'logs' ) {
+						return <Logs />;
+					}
+					return <Import credentialsConfigured={ status.configured } />;
+				} }
+			</TabPanel>
 		</div>
 	);
 }

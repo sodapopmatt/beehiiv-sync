@@ -71,7 +71,9 @@ final class ClientTest extends TestCase {
 		$url = $transport->calls[0]['url'];
 		self::assertStringContainsString( 'page=1', $url );
 		self::assertStringContainsString( 'audience=free', $url );
-		self::assertStringContainsString( 'expand=free_web_content', $url );
+		// Beehiiv requires `expand[]=` array notation (URL-encoded as %5B%5D=).
+		self::assertStringContainsString( 'expand%5B%5D=free_web_content', $url );
+		self::assertStringNotContainsString( 'expand%5B0%5D', $url );
 	}
 
 	public function test_401_throws_auth_exception(): void {

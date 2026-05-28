@@ -1,0 +1,93 @@
+<?php
+declare(strict_types=1);
+
+namespace BeehiivSync\Rest;
+
+use BeehiivSync\Api\Client;
+use BeehiivSync\Api\Credentials;
+use BeehiivSync\Api\WpHttpTransport;
+use BeehiivSync\Settings\Options;
+use BeehiivSync\Settings\Schema;
+use BeehiivSync\Sync\ContentSanitizer;
+use BeehiivSync\Sync\Importer;
+use BeehiivSync\Sync\ImportParams;
+use BeehiivSync\Sync\ItemProcessor;
+use BeehiivSync\Sync\PostMapper;
+use BeehiivSync\Sync\RunRepository;
+use BeehiivSync\Sync\WpPostRepository;
+use WP_Error;
+use WP_REST_Request;
+use WP_REST_Response;
+
+final class ImportController extends Controller {
+
+	public function __construct(
+		private readonly Credentials $credentials,
+		private readonly Options $options,
+		private readonly RunRepository $runs,
+	) {}
+
+	public function register_routes(): void {
+		register_rest_route(
+			self::NAMESPACE,
+			'/import',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'start' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/import/(?P<run_id>[A-Za-z0-9_\-]+)',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'status' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'run_id' => [ 'type' => 'string', 'required' => true ],
+				],
+			]
+		);
+	}
+
+	public function start( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		if ( ! $this->credentials->exists() ) {
+			return new WP_Error( 'beehiiv_sync_no_credentials', 'Connect beehiiv credentials first.', [ 'status' => 400 ] );
+		}
+
+		$body  = $request->get_json_params();
+		$input = is_array( $body ) ? $body : $request->get_params();
+		$input = is_array( $input ) ? $input : [];
+
+		$persisted_defaults = $this->options->all()['defaults'];
+
+		$override_defaults = is_array( $input['defaults'] ?? null ) ? $input['defaults'] : [];
+		$merged_defaults   = Schema::sanitize_defaults( $persisted_defaults, $override_defaults );
+
+		$params = ImportParams::build( $input, $merged_defaults );
+
+		$importer = new Importer(
+			new Client(
+				(string) $this->credentials->api_key(),
+				(string) $this->credentials->publication_id(),
+				new WpHttpTransport()
+			),
+			new ItemProcessor( new PostMapper( new ContentSanitizer() ), new WpPostRepository() ),
+			$this->runs,
+		);
+
+		$run_id = $importer->start( $params );
+
+		return new WP_REST_Response( [ 'run_id' => $run_id, 'status' => 'queued' ], 202 );
+	}
+
+	public function status( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$run = $this->runs->load( (string) $request->get_param( 'run_id' ) );
+		if ( $run === null ) {
+			return new WP_Error( 'beehiiv_sync_run_not_found', 'Run not found or expired.', [ 'status' => 404 ] );
+		}
+		return new WP_REST_Response( $run->to_array() );
+	}
+}

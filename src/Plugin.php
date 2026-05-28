@@ -7,10 +7,14 @@ use BeehiivSync\Admin\Assets;
 use BeehiivSync\Admin\Menu;
 use BeehiivSync\Api\Credentials;
 use BeehiivSync\Rest\CredentialsController;
+use BeehiivSync\Rest\DiagnosticsController;
+use BeehiivSync\Rest\ImportController;
 use BeehiivSync\Rest\SettingsController;
 use BeehiivSync\Settings\Options;
 use BeehiivSync\Support\Capabilities;
 use BeehiivSync\Support\Encryption;
+use BeehiivSync\Sync\Hooks;
+use BeehiivSync\Sync\RunRepository;
 
 final class Plugin {
 
@@ -39,6 +43,8 @@ final class Plugin {
 		$this->menu->register();
 		$this->assets->register();
 
+		( new Hooks() )->register();
+
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
 	}
 
@@ -47,7 +53,13 @@ final class Plugin {
 	}
 
 	public function register_rest_routes(): void {
-		( new CredentialsController( new Credentials( Encryption::from_wp_install() ) ) )->register_routes();
-		( new SettingsController( new Options() ) )->register_routes();
+		$credentials = new Credentials( Encryption::from_wp_install() );
+		$options     = new Options();
+		$runs        = new RunRepository();
+
+		( new CredentialsController( $credentials ) )->register_routes();
+		( new SettingsController( $options ) )->register_routes();
+		( new ImportController( $credentials, $options, $runs ) )->register_routes();
+		( new DiagnosticsController( $credentials ) )->register_routes();
 	}
 }

@@ -5,6 +5,7 @@ namespace BeehiivSync\Sync;
 
 use RuntimeException;
 use WP_Error;
+use WP_Term;
 
 final class WpPostRepository implements PostRepository {
 
@@ -64,11 +65,39 @@ final class WpPostRepository implements PostRepository {
 		}
 	}
 
-	public function set_terms( int $post_id, string $taxonomy, array $term_names ): void {
-		if ( $taxonomy === '' || $term_names === [] ) {
+	public function set_terms( int $post_id, string $taxonomy, array $term_names, array $term_ids ): void {
+		if ( $taxonomy === '' ) {
 			return;
 		}
-		wp_set_object_terms( $post_id, $term_names, $taxonomy, false );
+
+		$ids = $term_ids;
+
+		foreach ( $term_names as $name ) {
+			$name = (string) $name;
+			if ( $name === '' ) {
+				continue;
+			}
+			$term = term_exists( $name, $taxonomy );
+			if ( $term === null || $term === 0 ) {
+				$created = wp_insert_term( $name, $taxonomy );
+				if ( ! $created instanceof WP_Error && isset( $created['term_id'] ) ) {
+					$ids[] = (int) $created['term_id'];
+				}
+				continue;
+			}
+			if ( is_array( $term ) && isset( $term['term_id'] ) ) {
+				$ids[] = (int) $term['term_id'];
+			} elseif ( is_numeric( $term ) ) {
+				$ids[] = (int) $term;
+			}
+		}
+
+		$ids = array_values( array_unique( array_filter( $ids ) ) );
+		if ( $ids === [] ) {
+			return;
+		}
+
+		wp_set_object_terms( $post_id, $ids, $taxonomy, false );
 	}
 
 	public function sideload_featured_image( int $post_id, string $image_url ): void {
