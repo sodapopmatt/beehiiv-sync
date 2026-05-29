@@ -3,7 +3,6 @@ import { __ } from '@wordpress/i18n';
 import { Notice, Spinner, TabPanel } from '@wordpress/components';
 import Connect from './pages/Connect';
 import Import from './pages/Import';
-import Settings from './pages/Settings';
 import Logs from './pages/Logs';
 import { api } from './api';
 
@@ -38,7 +37,6 @@ export default function App() {
 	const tabs = [
 		{ name: 'connect', title: __( 'Connect', 'beehiiv-sync' ) },
 		{ name: 'import', title: __( 'Import', 'beehiiv-sync' ) },
-		{ name: 'settings', title: __( 'Settings', 'beehiiv-sync' ) },
 		{ name: 'logs', title: __( 'Logs', 'beehiiv-sync' ) },
 	];
 
@@ -49,9 +47,6 @@ export default function App() {
 				{ ( tab ) => {
 					if ( tab.name === 'connect' ) {
 						return <Connect status={ status } onChange={ refresh } />;
-					}
-					if ( tab.name === 'settings' ) {
-						return <Settings />;
 					}
 					if ( tab.name === 'logs' ) {
 						return <Logs />;
