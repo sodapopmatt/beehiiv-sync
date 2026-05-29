@@ -41,11 +41,16 @@ final class ContentSanitizerTest extends TestCase {
 		self::assertStringNotContainsString( '<body', $out );
 	}
 
-	public function test_strips_style_block_and_contents(): void {
-		$html = '<html><head><style>:root { --color: red; }</style></head><body><p>Real content</p></body></html>';
+	public function test_preserves_style_scoped_to_wrapper(): void {
+		$html = '<html><head><style>:root { --color: red; } .btn { color: var(--color); }</style></head><body><p class="btn">Real content</p></body></html>';
 		$out  = ( new ContentSanitizer() )->sanitize( $html );
+
 		self::assertStringContainsString( 'Real content', $out );
-		self::assertStringNotContainsString( '--color', $out );
+		// The stylesheet is preserved...
+		self::assertStringContainsString( '--color', $out );
+		self::assertStringContainsString( '.btn', $out );
+		// ...but scoped to the wrapper, with :root mapped onto it (no bare :root).
+		self::assertStringContainsString( 'class="bs-beehiiv-post"', $out );
 		self::assertStringNotContainsString( ':root', $out );
 	}
 

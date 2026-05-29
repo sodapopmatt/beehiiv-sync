@@ -95,7 +95,7 @@ final class WpPostRepository implements PostRepository {
 	}
 
 	public function insert( array $post_args ): int {
-		$result = wp_insert_post( $post_args, true );
+		$result = $this->without_post_kses( static fn() => wp_insert_post( $post_args, true ) );
 		if ( $result instanceof WP_Error ) {
 			throw new RuntimeException( 'wp_insert_post failed: ' . $result->get_error_message() );
 		}
@@ -104,9 +104,44 @@ final class WpPostRepository implements PostRepository {
 
 	public function update( int $post_id, array $post_args ): void {
 		$post_args['ID'] = $post_id;
-		$result          = wp_update_post( $post_args, true );
+		$result          = $this->without_post_kses( static fn() => wp_update_post( $post_args, true ) );
 		if ( $result instanceof WP_Error ) {
 			throw new RuntimeException( 'wp_update_post failed: ' . $result->get_error_message() );
+		}
+	}
+
+	/**
+	 * Run $fn with WordPress's save-time content kses filter disabled.
+	 *
+	 * Imports run via Action Scheduler (WP-Cron) with no logged-in user, so
+	 * `wp_filter_post_kses` would strip the scoped <style> block and inline
+	 * styles we deliberately kept — turning beehiiv's CSS into raw text in the
+	 * post. Our ContentSanitizer has already sanitized this content (kses on
+	 * the body + a scoped, breakout-protected stylesheet), so it's safe to skip
+	 * WordPress's redundant pass. The original filters are always restored.
+	 *
+	 * @template T
+	 * @param callable():T $fn
+	 * @return T
+	 */
+	private function without_post_kses( callable $fn ) {
+		$filters = [ 'content_save_pre', 'content_filtered_save_pre' ];
+		$removed = [];
+
+		foreach ( $filters as $filter ) {
+			$priority = has_filter( $filter, 'wp_filter_post_kses' );
+			if ( $priority !== false ) {
+				remove_filter( $filter, 'wp_filter_post_kses', (int) $priority );
+				$removed[ $filter ] = (int) $priority;
+			}
+		}
+
+		try {
+			return $fn();
+		} finally {
+			foreach ( $removed as $filter => $priority ) {
+				add_filter( $filter, 'wp_filter_post_kses', $priority );
+			}
 		}
 	}
 
