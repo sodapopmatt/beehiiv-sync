@@ -18,7 +18,7 @@ final class PostMapper {
 	 */
 	public function plan( BeehiivPost $beehiiv, array $settings_defaults, ?array $existing = null ): ImportPlan {
 		$content_raw   = $this->select_content( $beehiiv );
-		$content_clean = $this->sanitizer->sanitize( $content_raw );
+		$content_clean = $this->sanitizer->sanitize( $content_raw, $beehiiv->title );
 
 		$content_hash = hash(
 			'sha256',

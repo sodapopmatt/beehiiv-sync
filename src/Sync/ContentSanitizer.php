@@ -35,7 +35,7 @@ final class ContentSanitizer {
 		'player.vimeo.com',
 	];
 
-	public function sanitize( string $html ): string {
+	public function sanitize( string $html, string $title = '' ): string {
 		if ( $html === '' ) {
 			return '';
 		}
@@ -45,6 +45,7 @@ final class ContentSanitizer {
 		$body = $this->remove_blocks( $body, [ 'style', 'script', 'noscript', 'head', 'link', 'meta', 'template' ] );
 		$body = $this->strip_doctype_and_html_wrappers( $body );
 		$body = $this->strip_disallowed_iframes( $body );
+		$body = $this->strip_leading_title( $body, $title );
 
 		// We deliberately do NOT run wp_kses/safecss_filter_attr on the body:
 		// that strips inline style properties and is what was greying out
@@ -108,6 +109,40 @@ final class ContentSanitizer {
 			},
 			$html
 		);
+	}
+
+	/**
+	 * Beehiiv's content_html often leads with the post title as an <h1>-<h3>.
+	 * WordPress renders post_title separately, so that heading would show the
+	 * title a second time. Drop the first leading heading when its text matches
+	 * the post title; leave it alone otherwise so genuine in-article headings
+	 * survive.
+	 */
+	private function strip_leading_title( string $html, string $title ): string {
+		$title_norm = $this->normalize_text( $title );
+		if ( $title_norm === '' ) {
+			return $html;
+		}
+
+		return (string) preg_replace_callback(
+			'#^(\s*(?:<(?:div|p|header|section)\b[^>]*>\s*)*)<(h[1-3])\b[^>]*>(.*?)</\2>#is',
+			function ( array $m ) use ( $title_norm ): string {
+				$heading = $this->normalize_text( strip_tags( $m[3] ) );
+				// Keep any leading wrappers we matched; only drop the heading itself.
+				return $heading === $title_norm ? $m[1] : $m[0];
+			},
+			$html,
+			1
+		);
+	}
+
+	/**
+	 * Lower-case, decode entities, and collapse whitespace for loose comparison.
+	 */
+	private function normalize_text( string $s ): string {
+		$s = html_entity_decode( $s, ENT_QUOTES | ENT_HTML5 );
+		$s = (string) preg_replace( '#\s+#u', ' ', $s );
+		return strtolower( trim( $s ) );
 	}
 
 	/**

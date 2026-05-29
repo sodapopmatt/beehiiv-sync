@@ -135,7 +135,7 @@ final class DiagnosticsController extends Controller {
 		$content_free    = $beehiiv->content_html['free'] ?? null;
 		$content_premium = $beehiiv->content_html['premium'] ?? null;
 		$chosen          = $content_free ?? $content_premium ?? '';
-		$sanitized       = $sanitizer->sanitize( $chosen );
+		$sanitized       = $sanitizer->sanitize( $chosen, $beehiiv->title );
 
 		return new WP_REST_Response(
 			[

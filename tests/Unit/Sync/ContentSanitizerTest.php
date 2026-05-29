@@ -77,4 +77,30 @@ final class ContentSanitizerTest extends TestCase {
 		self::assertStringNotContainsString( '<!DOCTYPE', $out );
 		self::assertStringNotContainsString( '<!doctype', $out );
 	}
+
+	public function test_strips_leading_heading_matching_title(): void {
+		$html = '<body><h1>My Great Post</h1><p>Body text</p></body>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html, 'My Great Post' );
+		self::assertStringNotContainsString( '<h1>', $out );
+		self::assertStringContainsString( 'Body text', $out );
+	}
+
+	public function test_leading_heading_match_is_case_and_whitespace_insensitive(): void {
+		$html = '<body><h2>  my   great   post </h2><p>Body</p></body>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html, 'My Great Post' );
+		self::assertStringNotContainsString( '<h2', $out );
+		self::assertStringContainsString( 'Body', $out );
+	}
+
+	public function test_keeps_leading_heading_that_does_not_match_title(): void {
+		$html = '<body><h1>A Different Heading</h1><p>Body</p></body>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html, 'My Great Post' );
+		self::assertStringContainsString( 'A Different Heading', $out );
+	}
+
+	public function test_keeps_heading_when_no_title_provided(): void {
+		$html = '<body><h1>My Great Post</h1><p>Body</p></body>';
+		$out  = ( new ContentSanitizer() )->sanitize( $html );
+		self::assertStringContainsString( 'My Great Post', $out );
+	}
 }
