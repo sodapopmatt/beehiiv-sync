@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { useEffect, useRef, useState } from '@wordpress/element';
+import { __, sprintf } from '@wordpress/i18n';
 import {
 	Button,
 	Card,
@@ -7,22 +7,15 @@ import {
 	CardHeader,
 	CheckboxControl,
 	Notice,
+	SearchControl,
 	SelectControl,
 	Spinner,
 	__experimentalVStack as VStack,
 	__experimentalHStack as HStack,
 	__experimentalHeading as Heading,
-	__experimentalDivider as Divider,
 } from '@wordpress/components';
 import { api } from '../api';
 import RunProgress from '../components/RunProgress';
-
-const WP_STATUSES = [
-	{ value: 'draft', label: __( 'Draft', 'beehiiv-sync' ) },
-	{ value: 'publish', label: __( 'Published', 'beehiiv-sync' ) },
-	{ value: 'pending', label: __( 'Pending Review', 'beehiiv-sync' ) },
-	{ value: 'private', label: __( 'Private', 'beehiiv-sync' ) },
-];
 
 const BEEHIIV_STATUSES = [
 	{ value: 'confirmed', label: __( 'Published (confirmed)', 'beehiiv-sync' ) },
@@ -30,146 +23,145 @@ const BEEHIIV_STATUSES = [
 	{ value: 'archived', label: __( 'Archived', 'beehiiv-sync' ) },
 ];
 
-export default function Import( { credentialsConfigured } ) {
-	// Lookup data
-	const [ postTypes, setPostTypes ] = useState( [] );
-	const [ taxonomies, setTaxonomies ] = useState( [] );
-	const [ authors, setAuthors ] = useState( [] );
-	const [ termOptions, setTermOptions ] = useState( [] );
-	const [ loadingMeta, setLoadingMeta ] = useState( true );
+const ACTION_META = {
+	new: { label: __( 'New', 'beehiiv-sync' ), color: '#00a32a' },
+	update: { label: __( 'Update', 'beehiiv-sync' ), color: '#2271b1' },
+	unchanged: { label: __( 'Unchanged', 'beehiiv-sync' ), color: '#888' },
+	skip: { label: __( 'Skip', 'beehiiv-sync' ), color: '#888' },
+};
 
-	// Form state
+function formatDate( ts ) {
+	if ( ! ts ) return '—';
+	try {
+		return new Date( ts * 1000 ).toLocaleDateString( undefined, {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+		} );
+	} catch ( e ) {
+		return '—';
+	}
+}
+
+export default function Import( { credentialsConfigured } ) {
+	// Per-run filters (seeded from saved settings).
 	const [ audience, setAudience ] = useState( 'all' );
 	const [ selectedStatuses, setSelectedStatuses ] = useState( {
 		confirmed: true,
 		draft: false,
 		archived: false,
 	} );
-	const [ statusMap, setStatusMap ] = useState( {
-		confirmed: 'draft',
-		draft: 'draft',
-		archived: 'draft',
-	} );
-	const [ postType, setPostType ] = useState( 'post' );
-	const [ fixedTaxonomy, setFixedTaxonomy ] = useState( '' );
-	const [ fixedTermId, setFixedTermId ] = useState( '' );
-	const [ authorId, setAuthorId ] = useState( '' );
-	const [ tagTarget, setTagTarget ] = useState( 'post_tag' );
 	const [ importMode, setImportMode ] = useState( 'both' );
+	const [ loadingDefaults, setLoadingDefaults ] = useState( true );
 
-	// Run state
-	const [ runId, setRunId ] = useState( null );
+	// Preview + selection
+	const [ preview, setPreview ] = useState( null );
+	const [ selected, setSelected ] = useState( {} );
+	const [ search, setSearch ] = useState( '' );
+	const [ previewing, setPreviewing ] = useState( false );
+
+	// Run
 	const [ run, setRun ] = useState( null );
 	const [ error, setError ] = useState( null );
 	const [ starting, setStarting ] = useState( false );
 	const pollRef = useRef( null );
 
-	// Load post types, taxonomies, authors + persisted defaults
 	useEffect( () => {
 		( async () => {
 			try {
-				const [ types, taxes, users, settings ] = await Promise.all( [
-					api.getPostTypes(),
-					api.getTaxonomies(),
-					api.getAuthors(),
-					api.getSettings(),
-				] );
-
-				const ptList = Object.values( types ).filter(
-					( t ) => t.viewable !== false && t.slug !== 'attachment'
-				);
-				const taxList = Object.values( taxes );
-
-				setPostTypes( ptList );
-				setTaxonomies( taxList );
-				setAuthors( users );
-
-				// Seed form from persisted defaults
+				const settings = await api.getSettings();
 				const d = settings?.defaults || {};
-				if ( d.post_type ) setPostType( d.post_type );
 				if ( d.audience ) setAudience( d.audience );
-				if ( d.tag_target ) setTagTarget( d.tag_target );
 				if ( d.import_mode ) setImportMode( d.import_mode );
-				if ( d.author_id ) setAuthorId( String( d.author_id ) );
-				if ( d.fixed_taxonomy ) setFixedTaxonomy( d.fixed_taxonomy );
-				if ( d.fixed_term_id ) setFixedTermId( String( d.fixed_term_id ) );
-				if ( d.post_status_map ) setStatusMap( d.post_status_map );
 			} catch ( e ) {
-				setError( e.message );
+				// Non-fatal: fall back to component defaults.
 			} finally {
-				setLoadingMeta( false );
+				setLoadingDefaults( false );
 			}
 		} )();
 		return () => clearTimeout( pollRef.current );
 	}, [] );
 
-	// Filter taxonomies by selected post type
-	const availableTaxonomies = useMemo(
-		() => taxonomies.filter( ( t ) => Array.isArray( t.types ) && t.types.includes( postType ) ),
-		[ taxonomies, postType ]
-	);
-
-	// Load terms when fixed taxonomy changes
-	useEffect( () => {
-		if ( ! fixedTaxonomy ) {
-			setTermOptions( [] );
-			return;
-		}
-		const tax = taxonomies.find( ( t ) => t.slug === fixedTaxonomy );
-		if ( ! tax ) return;
-		( async () => {
-			try {
-				const terms = await api.getTermsFor( tax.rest_base );
-				setTermOptions( terms );
-			} catch ( e ) {
-				setError( e.message );
-			}
-		} )();
-	}, [ fixedTaxonomy, taxonomies ] );
-
-	const toggleStatus = ( key ) => ( checked ) => {
-		setSelectedStatuses( ( prev ) => ( { ...prev, [ key ]: checked } ) );
-	};
-
-	const start = async () => {
-		const statuses = Object.entries( selectedStatuses )
+	const selectedBeehiivStatuses = () =>
+		Object.entries( selectedStatuses )
 			.filter( ( [ , v ] ) => v )
 			.map( ( [ k ] ) => k );
 
-		if ( statuses.length === 0 ) {
+	const basePayload = () => ( {
+		audience,
+		beehiiv_statuses: selectedBeehiivStatuses(),
+		defaults: { import_mode: importMode },
+	} );
+
+	const runPreview = async () => {
+		if ( selectedBeehiivStatuses().length === 0 ) {
 			setError( __( 'Pick at least one beehiiv status to import.', 'beehiiv-sync' ) );
+			return;
+		}
+
+		setPreviewing( true );
+		setError( null );
+		setRun( null );
+
+		try {
+			const result = await api.previewImport( basePayload() );
+			setPreview( result );
+			const next = {};
+			( result.items || [] ).forEach( ( item ) => {
+				next[ item.beehiiv_id ] = true;
+			} );
+			setSelected( next );
+		} catch ( e ) {
+			setError( e.message );
+			setPreview( null );
+		} finally {
+			setPreviewing( false );
+		}
+	};
+
+	const toggleRow = ( id ) => ( checked ) => {
+		setSelected( ( prev ) => ( { ...prev, [ id ]: checked } ) );
+	};
+
+	const items = preview ? preview.items : [];
+	const visibleItems = search
+		? items.filter( ( i ) =>
+				( i.title || '' ).toLowerCase().includes( search.toLowerCase() )
+		  )
+		: items;
+	const selectedCount = items.filter( ( i ) => selected[ i.beehiiv_id ] ).length;
+	const allVisibleSelected =
+		visibleItems.length > 0 && visibleItems.every( ( i ) => selected[ i.beehiiv_id ] );
+
+	const toggleAllVisible = ( checked ) => {
+		setSelected( ( prev ) => {
+			const next = { ...prev };
+			visibleItems.forEach( ( i ) => {
+				next[ i.beehiiv_id ] = checked;
+			} );
+			return next;
+		} );
+	};
+
+	const startSelected = async () => {
+		const ids = items.filter( ( i ) => selected[ i.beehiiv_id ] ).map( ( i ) => i.beehiiv_id );
+		if ( ids.length === 0 ) {
+			setError( __( 'Select at least one post to import.', 'beehiiv-sync' ) );
 			return;
 		}
 
 		setStarting( true );
 		setError( null );
-		// Render the progress card immediately so the user sees feedback before the first poll.
 		setRun( {
 			status: 'queued',
 			current_stage: __( 'Starting…', 'beehiiv-sync' ),
-			counts: { items_seen: 0, inserted: 0, updated: 0, skipped: 0, expected_total: 0 },
+			counts: { items_seen: 0, inserted: 0, updated: 0, skipped: 0, expected_total: ids.length },
 			errors: [],
 			last_event_at: Math.floor( Date.now() / 1000 ),
 		} );
 
-		const payload = {
-			audience,
-			beehiiv_statuses: statuses,
-			defaults: {
-				post_type: postType,
-				author_id: authorId ? Number( authorId ) : 0,
-				tag_target: tagTarget,
-				import_mode: importMode,
-				fixed_taxonomy: fixedTaxonomy || '',
-				fixed_term_id: fixedTermId ? Number( fixedTermId ) : 0,
-				post_status_map: statusMap,
-			},
-		};
-
 		try {
-			const { run_id } = await api.startImport( payload );
-			setRunId( run_id );
-			// Aggressive polling at first (every 1s), then ease off to 2s after 30 seconds.
+			const { run_id } = await api.startImport( { ...basePayload(), selected_ids: ids } );
 			let elapsed = 0;
 			const tick = () => {
 				poll( run_id );
@@ -199,6 +191,14 @@ export default function Import( { credentialsConfigured } ) {
 		}
 	};
 
+	const resetForNewImport = () => {
+		clearTimeout( pollRef.current );
+		setRun( null );
+		setPreview( null );
+		setSelected( {} );
+		setSearch( '' );
+	};
+
 	if ( ! credentialsConfigured ) {
 		return (
 			<Notice status="warning" isDismissible={ false }>
@@ -207,25 +207,11 @@ export default function Import( { credentialsConfigured } ) {
 		);
 	}
 
-	if ( loadingMeta ) {
+	if ( loadingDefaults ) {
 		return <Spinner />;
 	}
 
 	const isRunning = run && ( run.status === 'queued' || run.status === 'running' );
-
-	const postTypeOptions = postTypes.map( ( t ) => ( { value: t.slug, label: t.name } ) );
-	const taxonomyOptions = [
-		{ value: '', label: __( '— None —', 'beehiiv-sync' ) },
-		...availableTaxonomies.map( ( t ) => ( { value: t.slug, label: t.name } ) ),
-	];
-	const termSelectOptions = [
-		{ value: '', label: __( '— None —', 'beehiiv-sync' ) },
-		...termOptions.map( ( t ) => ( { value: String( t.id ), label: t.name } ) ),
-	];
-	const authorOptions = [
-		{ value: '', label: __( '— No author —', 'beehiiv-sync' ) },
-		...authors.map( ( u ) => ( { value: String( u.id ), label: u.name } ) ),
-	];
 
 	return (
 		<VStack spacing={ 4 }>
@@ -235,110 +221,23 @@ export default function Import( { credentialsConfigured } ) {
 				</Notice>
 			) }
 
-			{ /* Step 1 */ }
+			{ /* Filters */ }
 			<Card>
 				<CardHeader>
-					<Heading level={ 4 }>{ __( 'Step 1: Choose data from beehiiv', 'beehiiv-sync' ) }</Heading>
+					<Heading level={ 4 }>{ __( 'What to import', 'beehiiv-sync' ) }</Heading>
 				</CardHeader>
 				<CardBody>
 					<VStack spacing={ 4 }>
-						<SelectControl
-							label={ __( 'Content type', 'beehiiv-sync' ) }
-							value={ audience }
-							options={ [
-								{ value: 'all', label: __( 'All', 'beehiiv-sync' ) },
-								{ value: 'free', label: __( 'Free only', 'beehiiv-sync' ) },
-								{ value: 'premium', label: __( 'Premium only', 'beehiiv-sync' ) },
-							] }
-							onChange={ setAudience }
-							__nextHasNoMarginBottom
-						/>
-
-						<Divider />
-
-						<div className="bs-section-label">
-							{ __( 'Beehiiv status → WordPress status', 'beehiiv-sync' ) }
-						</div>
-						<div>
-							{ BEEHIIV_STATUSES.map( ( bs ) => (
-								<div key={ bs.value } className="bs-status-row">
-									<CheckboxControl
-										label={ bs.label }
-										checked={ !! selectedStatuses[ bs.value ] }
-										onChange={ toggleStatus( bs.value ) }
-										__nextHasNoMarginBottom
-									/>
-									<SelectControl
-										value={ statusMap[ bs.value ] }
-										options={ WP_STATUSES }
-										onChange={ ( v ) =>
-											setStatusMap( ( prev ) => ( { ...prev, [ bs.value ]: v } ) )
-										}
-										disabled={ ! selectedStatuses[ bs.value ] }
-										__nextHasNoMarginBottom
-									/>
-								</div>
-							) ) }
-						</div>
-					</VStack>
-				</CardBody>
-			</Card>
-
-			{ /* Step 2 */ }
-			<Card>
-				<CardHeader>
-					<Heading level={ 4 }>{ __( 'Step 2: Import data to WordPress', 'beehiiv-sync' ) }</Heading>
-				</CardHeader>
-				<CardBody>
-					<VStack spacing={ 5 }>
 						<div className="bs-form-row">
 							<SelectControl
-								label={ __( 'Post type', 'beehiiv-sync' ) }
-								value={ postType }
-								options={ postTypeOptions }
-								onChange={ ( v ) => {
-									setPostType( v );
-									setFixedTaxonomy( '' );
-									setFixedTermId( '' );
-								} }
-								__nextHasNoMarginBottom
-							/>
-							<SelectControl
-								label={ __( 'Assign to taxonomy', 'beehiiv-sync' ) }
-								value={ fixedTaxonomy }
-								options={ taxonomyOptions }
-								onChange={ ( v ) => {
-									setFixedTaxonomy( v );
-									setFixedTermId( '' );
-								} }
-								__nextHasNoMarginBottom
-							/>
-							<SelectControl
-								label={ __( 'Term', 'beehiiv-sync' ) }
-								value={ fixedTermId }
-								options={ termSelectOptions }
-								onChange={ setFixedTermId }
-								disabled={ ! fixedTaxonomy }
-								__nextHasNoMarginBottom
-							/>
-						</div>
-						<div className="bs-form-row">
-							<SelectControl
-								label={ __( 'Author', 'beehiiv-sync' ) }
-								value={ authorId }
-								options={ authorOptions }
-								onChange={ setAuthorId }
-								__nextHasNoMarginBottom
-							/>
-							<SelectControl
-								label={ __( 'Import beehiiv tags as', 'beehiiv-sync' ) }
-								value={ tagTarget }
+								label={ __( 'Content type', 'beehiiv-sync' ) }
+								value={ audience }
 								options={ [
-									{ value: 'post_tag', label: __( 'Post Tag', 'beehiiv-sync' ) },
-									{ value: 'category', label: __( 'Category', 'beehiiv-sync' ) },
-									{ value: 'none', label: __( 'Skip tags', 'beehiiv-sync' ) },
+									{ value: 'all', label: __( 'All', 'beehiiv-sync' ) },
+									{ value: 'free', label: __( 'Free only', 'beehiiv-sync' ) },
+									{ value: 'premium', label: __( 'Premium only', 'beehiiv-sync' ) },
 								] }
-								onChange={ setTagTarget }
+								onChange={ setAudience }
 								__nextHasNoMarginBottom
 							/>
 							<SelectControl
@@ -352,25 +251,226 @@ export default function Import( { credentialsConfigured } ) {
 								onChange={ setImportMode }
 								__nextHasNoMarginBottom
 							/>
+							<div />
 						</div>
+
+						<div>
+							<div className="bs-section-label">
+								{ __( 'beehiiv statuses to include', 'beehiiv-sync' ) }
+							</div>
+							<HStack justify="flex-start" spacing={ 5 }>
+								{ BEEHIIV_STATUSES.map( ( bs ) => (
+									<CheckboxControl
+										key={ bs.value }
+										label={ bs.label }
+										checked={ !! selectedStatuses[ bs.value ] }
+										onChange={ ( checked ) =>
+											setSelectedStatuses( ( prev ) => ( { ...prev, [ bs.value ]: checked } ) )
+										}
+										__nextHasNoMarginBottom
+									/>
+								) ) }
+							</HStack>
+						</div>
+
+						<p className="bs-help-text">
+							{ __(
+								'Post type, author, taxonomy, tags and status mapping are configured on the Settings tab.',
+								'beehiiv-sync'
+							) }
+						</p>
+
+						<HStack justify="flex-start">
+							<Button
+								variant={ preview ? 'secondary' : 'primary' }
+								onClick={ runPreview }
+								disabled={ previewing || starting || isRunning }
+								isBusy={ previewing }
+							>
+								{ preview
+									? __( 'Refresh preview', 'beehiiv-sync' )
+									: __( 'Preview import', 'beehiiv-sync' ) }
+							</Button>
+						</HStack>
 					</VStack>
 				</CardBody>
 			</Card>
 
-			<HStack justify="flex-start">
-				<Button
-					variant="primary"
-					onClick={ start }
-					disabled={ starting || isRunning }
-					isBusy={ starting }
-				>
-					{ isRunning
-						? __( 'Importing…', 'beehiiv-sync' )
-						: __( 'Start import', 'beehiiv-sync' ) }
-				</Button>
-			</HStack>
+			{ preview && ! run && (
+				<PreviewResults
+					preview={ preview }
+					visibleItems={ visibleItems }
+					selected={ selected }
+					selectedCount={ selectedCount }
+					onToggleRow={ toggleRow }
+					allVisibleSelected={ allVisibleSelected }
+					onToggleAllVisible={ toggleAllVisible }
+					search={ search }
+					onSearch={ setSearch }
+					onImport={ startSelected }
+					importing={ starting }
+				/>
+			) }
 
-			{ run && <RunProgress run={ run } /> }
+			{ run && (
+				<VStack spacing={ 3 }>
+					<RunProgress run={ run } />
+					{ ! isRunning && (
+						<HStack justify="flex-start">
+							<Button variant="secondary" onClick={ resetForNewImport }>
+								{ __( 'Start another import', 'beehiiv-sync' ) }
+							</Button>
+						</HStack>
+					) }
+				</VStack>
+			) }
 		</VStack>
+	);
+}
+
+function ActionBadge( { action } ) {
+	const meta = ACTION_META[ action ] || ACTION_META.skip;
+	return (
+		<span
+			style={ {
+				background: meta.color,
+				color: 'white',
+				padding: '1px 8px',
+				borderRadius: 10,
+				fontSize: 11,
+				fontWeight: 600,
+				textTransform: 'uppercase',
+				whiteSpace: 'nowrap',
+			} }
+		>
+			{ meta.label }
+		</span>
+	);
+}
+
+function PreviewResults( {
+	preview,
+	visibleItems,
+	selected,
+	selectedCount,
+	onToggleRow,
+	allVisibleSelected,
+	onToggleAllVisible,
+	search,
+	onSearch,
+	onImport,
+	importing,
+} ) {
+	const s = preview.summary || {};
+	const considered = s.total ?? 0;
+	const skippedCount = ( s.unchanged ?? 0 ) + ( s.skip ?? 0 );
+
+	return (
+		<Card>
+			<CardHeader>
+				<HStack justify="space-between" alignment="center">
+					<Button
+						variant="primary"
+						onClick={ onImport }
+						disabled={ importing || selectedCount === 0 }
+						isBusy={ importing }
+					>
+						{ sprintf(
+							/* translators: %d: number of selected posts */
+							__( 'Import %d selected', 'beehiiv-sync' ),
+							selectedCount
+						) }
+					</Button>
+					<span style={ { color: '#666', fontSize: 13 } }>
+						{ sprintf(
+							/* translators: 1: considered count, 2: already up-to-date/excluded count */
+							__( '%1$d considered · %2$d already up to date or excluded', 'beehiiv-sync' ),
+							considered,
+							skippedCount
+						) }
+					</span>
+				</HStack>
+			</CardHeader>
+			<CardBody>
+				<VStack spacing={ 3 }>
+					{ preview.truncated && (
+						<Notice status="info" isDismissible={ false }>
+							{ __(
+								'Preview was capped at the first 1000 posts. Narrow the filters to see the rest.',
+								'beehiiv-sync'
+							) }
+						</Notice>
+					) }
+
+					{ preview.items.length === 0 ? (
+						<Notice status="info" isDismissible={ false }>
+							{ __(
+								'No posts match the current criteria — everything is already imported and up to date, or excluded by your import option.',
+								'beehiiv-sync'
+							) }
+						</Notice>
+					) : (
+						<>
+							<SearchControl
+								value={ search }
+								onChange={ onSearch }
+								placeholder={ __( 'Search by title…', 'beehiiv-sync' ) }
+								__nextHasNoMarginBottom
+							/>
+							<table className="widefat striped" style={ { borderCollapse: 'collapse' } }>
+								<thead>
+									<tr>
+										<th style={ { width: 36 } }>
+											<CheckboxControl
+												checked={ allVisibleSelected }
+												onChange={ onToggleAllVisible }
+												__nextHasNoMarginBottom
+											/>
+										</th>
+										<th>{ __( 'Title', 'beehiiv-sync' ) }</th>
+										<th style={ { width: 110 } }>{ __( 'beehiiv status', 'beehiiv-sync' ) }</th>
+										<th style={ { width: 120 } }>{ __( 'Publish date', 'beehiiv-sync' ) }</th>
+										<th style={ { width: 90 } }>{ __( 'Action', 'beehiiv-sync' ) }</th>
+									</tr>
+								</thead>
+								<tbody>
+									{ visibleItems.map( ( item ) => (
+										<tr key={ item.beehiiv_id }>
+											<td>
+												<CheckboxControl
+													checked={ !! selected[ item.beehiiv_id ] }
+													onChange={ onToggleRow( item.beehiiv_id ) }
+													__nextHasNoMarginBottom
+												/>
+											</td>
+											<td>
+												{ item.web_url ? (
+													<a href={ item.web_url } target="_blank" rel="noreferrer">
+														{ item.title || __( '(untitled)', 'beehiiv-sync' ) }
+													</a>
+												) : (
+													item.title || __( '(untitled)', 'beehiiv-sync' )
+												) }
+												{ item.action === 'update' && item.existing_post_id && (
+													<span style={ { color: '#888', fontSize: 12 } }>
+														{ ' ' }
+														{ sprintf( __( '(post #%d)', 'beehiiv-sync' ), item.existing_post_id ) }
+													</span>
+												) }
+											</td>
+											<td>{ item.beehiiv_status }</td>
+											<td>{ formatDate( item.publish_date ) }</td>
+											<td>
+												<ActionBadge action={ item.action } />
+											</td>
+										</tr>
+									) ) }
+								</tbody>
+							</table>
+						</>
+					) }
+				</VStack>
+			</CardBody>
+		</Card>
 	);
 }

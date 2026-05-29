@@ -24,6 +24,7 @@ final class ImportRun {
 	public int $updated        = 0;
 	public int $skipped        = 0;
 	public int $expected_total = 0;
+	public bool $expected_total_locked = false;
 	public string $current_stage = 'Queued';
 
 	/** @var array<string, int> total_results per beehiiv status, used to compute expected_total */
@@ -55,8 +56,17 @@ final class ImportRun {
 		$this->current_stage = sprintf( 'Processing items (%d / %d)', $this->items_seen, max( $this->expected_total, $this->items_seen ) );
 	}
 
+	/**
+	 * Pin the expected total to a known value (the user's preview selection)
+	 * so per-page fetch counts don't inflate the denominator.
+	 */
+	public function lock_expected_total( int $total ): void {
+		$this->expected_total        = max( 0, $total );
+		$this->expected_total_locked = true;
+	}
+
 	public function record_page( string $beehiiv_status, int $page, int $total_pages, int $total_results ): void {
-		if ( ! isset( $this->totals_by_status[ $beehiiv_status ] ) ) {
+		if ( ! $this->expected_total_locked && ! isset( $this->totals_by_status[ $beehiiv_status ] ) ) {
 			$this->totals_by_status[ $beehiiv_status ] = $total_results;
 			$this->expected_total                       = array_sum( $this->totals_by_status );
 		}
@@ -108,6 +118,7 @@ final class ImportRun {
 				'expected_total' => $this->expected_total,
 			],
 			'totals_by_status' => $this->totals_by_status,
+			'expected_total_locked' => $this->expected_total_locked,
 			'errors'           => $this->errors,
 		];
 	}
@@ -131,6 +142,7 @@ final class ImportRun {
 		$run->updated       = (int) ( $counts['updated'] ?? 0 );
 		$run->skipped       = (int) ( $counts['skipped'] ?? 0 );
 		$run->expected_total = (int) ( $counts['expected_total'] ?? 0 );
+		$run->expected_total_locked = (bool) ( $data['expected_total_locked'] ?? false );
 		$run->totals_by_status = is_array( $data['totals_by_status'] ?? null ) ? $data['totals_by_status'] : [];
 		$run->errors        = is_array( $data['errors'] ?? null ) ? $data['errors'] : [];
 		return $run;

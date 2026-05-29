@@ -36,6 +36,13 @@ final class Importer {
 	public function start( ImportParams $params ): string {
 		$run_id = $this->generate_run_id();
 		$run    = new ImportRun( $run_id, ImportRun::STATUS_QUEUED, $params->to_array() );
+
+		// In a selected import we already know exactly how many items will be
+		// processed, so pin the progress denominator to that count.
+		if ( $params->selected_ids !== null ) {
+			$run->lock_expected_total( count( $params->selected_ids ) );
+		}
+
 		$this->runs->save( $run );
 
 		as_schedule_single_action(
@@ -102,6 +109,8 @@ final class Importer {
 
 		$scheduled = 0;
 		$failed    = 0;
+		$skipped   = 0;
+		$selected  = $params->selected_ids;
 		$this->runs->mutate(
 			$run_id,
 			static function ( ImportRun $r ) use ( $status, $page, $result ): void {
@@ -110,6 +119,12 @@ final class Importer {
 		);
 
 		foreach ( $result->posts as $post ) {
+			// Honour the user's preview selection: only process chosen ids.
+			if ( $selected !== null && ! in_array( $post->id, $selected, true ) ) {
+				$skipped++;
+				continue;
+			}
+
 			$this->runs->save_payload( $run_id, $post->id, $post->raw );
 
 			$action_id = as_schedule_single_action(
@@ -142,6 +157,7 @@ final class Importer {
 				'total'     => count( $result->posts ),
 				'scheduled' => $scheduled,
 				'failed'    => $failed,
+				'deselected' => $skipped,
 			]
 		);
 

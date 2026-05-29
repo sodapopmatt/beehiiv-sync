@@ -9,9 +9,16 @@ namespace BeehiivSync\Sync;
 interface PostRepository {
 
 	/**
+	 * Locate the WordPress post that already represents this beehiiv post.
+	 *
+	 * Matches on the `_beehiiv_post_id` meta first; failing that, falls back
+	 * to a same-slug post in the target post type that isn't already claimed
+	 * by a different beehiiv id (so posts created before/outside this plugin
+	 * get adopted instead of duplicated).
+	 *
 	 * @return array{id:int, content_hash:?string}|null
 	 */
-	public function find_by_beehiiv_id( string $beehiiv_id ): ?array;
+	public function find_existing( string $beehiiv_id, string $slug, string $post_type ): ?array;
 
 	/**
 	 * @param array<string, mixed> $post_args

@@ -9,19 +9,69 @@ use WP_Term;
 
 final class WpPostRepository implements PostRepository {
 
-	public function find_by_beehiiv_id( string $beehiiv_id ): ?array {
+	/**
+	 * Meta keys that store a beehiiv post id, newest first.
+	 *
+	 * `_beehiiv_post_id` is ours. `beehiiv_campaign_id` is written by the
+	 * "Integration Toolkit for beehiiv" (ITFB) plugin with the same beehiiv
+	 * `id` value, so we can adopt ITFB-imported posts by an exact id match
+	 * instead of guessing by slug.
+	 */
+	private const ID_META_KEYS = [ '_beehiiv_post_id', 'beehiiv_campaign_id' ];
+
+	public function find_existing( string $beehiiv_id, string $slug, string $post_type ): ?array {
+		// 1. Exact match on a beehiiv-id meta key (ours or a prior importer's).
+		$post_id = $this->find_id_by_beehiiv_id( $beehiiv_id );
+
+		// 2. Last resort: a same-slug post with no id marker at all, so we adopt
+		//    it rather than duplicate.
+		if ( $post_id === null && $slug !== '' ) {
+			$post_id = $this->find_adoptable_id_by_slug( $slug, $post_type, $beehiiv_id );
+		}
+
+		if ( $post_id === null ) {
+			return null;
+		}
+
+		$hash = get_post_meta( $post_id, '_beehiiv_content_hash', true );
+
+		return [
+			'id'           => $post_id,
+			'content_hash' => is_string( $hash ) && $hash !== '' ? $hash : null,
+		];
+	}
+
+	private function find_id_by_beehiiv_id( string $beehiiv_id ): ?int {
+		$meta_query = [ 'relation' => 'OR' ];
+		foreach ( self::ID_META_KEYS as $key ) {
+			$meta_query[] = [
+				'key'   => $key,
+				'value' => $beehiiv_id,
+			];
+		}
+
 		$posts = get_posts(
 			[
 				'post_type'      => 'any',
 				'post_status'    => 'any',
 				'posts_per_page' => 1,
 				'fields'         => 'ids',
-				'meta_query'     => [
-					[
-						'key'   => '_beehiiv_post_id',
-						'value' => $beehiiv_id,
-					],
-				],
+				'meta_query'     => $meta_query,
+				'no_found_rows'  => true,
+			]
+		);
+
+		return is_array( $posts ) && $posts !== [] ? (int) $posts[0] : null;
+	}
+
+	private function find_adoptable_id_by_slug( string $slug, string $post_type, string $beehiiv_id ): ?int {
+		$posts = get_posts(
+			[
+				'post_type'      => $post_type !== '' ? $post_type : 'any',
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'name'           => $slug,
 				'no_found_rows'  => true,
 			]
 		);
@@ -31,12 +81,17 @@ final class WpPostRepository implements PostRepository {
 		}
 
 		$post_id = (int) $posts[0];
-		$hash    = get_post_meta( $post_id, '_beehiiv_content_hash', true );
 
-		return [
-			'id'           => $post_id,
-			'content_hash' => is_string( $hash ) && $hash !== '' ? $hash : null,
-		];
+		// Don't hijack a post that already belongs to a *different* beehiiv post
+		// under any known id meta key (ours or a prior importer's).
+		foreach ( self::ID_META_KEYS as $key ) {
+			$claimed = get_post_meta( $post_id, $key, true );
+			if ( is_string( $claimed ) && $claimed !== '' && $claimed !== $beehiiv_id ) {
+				return null;
+			}
+		}
+
+		return $post_id;
 	}
 
 	public function insert( array $post_args ): int {

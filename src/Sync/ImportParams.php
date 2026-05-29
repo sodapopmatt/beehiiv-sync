@@ -15,14 +15,17 @@ use BeehiivSync\Settings\Schema;
 final class ImportParams {
 
 	/**
-	 * @param string[]             $beehiiv_statuses  Filter sent to beehiiv: confirmed/draft/archived.
-	 * @param array<string, mixed> $defaults          The 'defaults' block from settings.
+	 * @param string[]              $beehiiv_statuses  Filter sent to beehiiv: confirmed/draft/archived.
+	 * @param array<string, mixed>  $defaults          The 'defaults' block from settings.
+	 * @param string[]|null         $selected_ids      When set, only these beehiiv ids are imported
+	 *                                                  (the user's preview selection). null = import all.
 	 */
 	public function __construct(
 		public readonly string $audience,
 		public readonly array $beehiiv_statuses,
 		public readonly int $per_page,
 		public readonly array $defaults,
+		public readonly ?array $selected_ids = null,
 	) {}
 
 	/**
@@ -46,7 +49,17 @@ final class ImportParams {
 		$per_page = isset( $input['per_page'] ) ? (int) $input['per_page'] : 50;
 		$per_page = max( 1, min( 100, $per_page ) );
 
-		return new self( $audience, $statuses, $per_page, $defaults );
+		$selected_ids = null;
+		if ( isset( $input['selected_ids'] ) && is_array( $input['selected_ids'] ) ) {
+			$selected_ids = array_values(
+				array_filter(
+					array_map( 'strval', $input['selected_ids'] ),
+					static fn( string $id ): bool => $id !== ''
+				)
+			);
+		}
+
+		return new self( $audience, $statuses, $per_page, $defaults, $selected_ids );
 	}
 
 	/**
@@ -58,6 +71,7 @@ final class ImportParams {
 			'beehiiv_statuses' => $this->beehiiv_statuses,
 			'per_page'         => $this->per_page,
 			'defaults'         => $this->defaults,
+			'selected_ids'     => $this->selected_ids,
 		];
 	}
 
@@ -70,6 +84,7 @@ final class ImportParams {
 			beehiiv_statuses: is_array( $data['beehiiv_statuses'] ?? null ) ? $data['beehiiv_statuses'] : [ 'confirmed' ],
 			per_page: (int) ( $data['per_page'] ?? 50 ),
 			defaults: is_array( $data['defaults'] ?? null ) ? $data['defaults'] : [],
+			selected_ids: is_array( $data['selected_ids'] ?? null ) ? array_values( array_map( 'strval', $data['selected_ids'] ) ) : null,
 		);
 	}
 
@@ -78,10 +93,15 @@ final class ImportParams {
 	 */
 	public function api_query( string $status, int $page ): array {
 		$query = [
-			'page'   => $page,
-			'limit'  => $this->per_page,
-			'status' => $status,
-			'expand' => $this->expand_for_audience(),
+			'page'      => $page,
+			'limit'     => $this->per_page,
+			'status'    => $status,
+			'expand'    => $this->expand_for_audience(),
+			// Stable, append-only ordering: oldest first so new posts created
+			// mid-run land on the last page instead of shifting earlier pages
+			// (which would otherwise make the same post appear on two pages).
+			'order_by'  => 'created',
+			'direction' => 'asc',
 		];
 		if ( $this->audience !== 'all' ) {
 			$query['audience'] = $this->audience;

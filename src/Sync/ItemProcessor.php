@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace BeehiivSync\Sync;
 
 use BeehiivSync\Api\Dto\BeehiivPost;
+use BeehiivSync\Support\Lock;
 use BeehiivSync\Support\Logger;
 
 final class ItemProcessor {
@@ -17,7 +18,35 @@ final class ItemProcessor {
 	 * @param array<string, mixed> $settings_defaults
 	 */
 	public function process( BeehiivPost $beehiiv, array $settings_defaults ): ItemResult {
-		$existing = $this->repository->find_by_beehiiv_id( $beehiiv->id );
+		// Serialize all work for this beehiiv id. If a sibling worker already
+		// holds the lock it is handling this post, so we skip rather than risk
+		// a duplicate insert. The find/insert below is only safe to run alone.
+		$lock_key = 'item_' . $beehiiv->id;
+		if ( ! Lock::acquire( $lock_key ) ) {
+			if ( class_exists( Logger::class ) ) {
+				Logger::warn( 'item.locked', [ 'beehiiv_id' => $beehiiv->id ] );
+			}
+			return new ItemResult(
+				action: ImportPlan::ACTION_SKIP,
+				beehiiv_id: $beehiiv->id,
+				post_id: null,
+				skip_reason: 'locked',
+			);
+		}
+
+		try {
+			return $this->process_locked( $beehiiv, $settings_defaults );
+		} finally {
+			Lock::release( $lock_key );
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $settings_defaults
+	 */
+	private function process_locked( BeehiivPost $beehiiv, array $settings_defaults ): ItemResult {
+		$post_type = (string) ( $settings_defaults['post_type'] ?? 'post' );
+		$existing  = $this->repository->find_existing( $beehiiv->id, $beehiiv->slug, $post_type );
 		$plan     = $this->mapper->plan( $beehiiv, $settings_defaults, $existing );
 
 		if ( class_exists( Logger::class ) ) {

@@ -20,6 +20,8 @@ export const api = {
 	getSettings: () => apiFetch( { path: ns( '/settings' ) } ),
 	updateSettings: ( payload ) =>
 		apiFetch( { path: ns( '/settings' ), method: 'PUT', data: payload } ),
+	previewImport: ( payload ) =>
+		apiFetch( { path: ns( '/import/preview' ), method: 'POST', data: payload } ),
 	startImport: ( payload ) =>
 		apiFetch( { path: ns( '/import' ), method: 'POST', data: payload } ),
 	getImportStatus: ( runId ) =>

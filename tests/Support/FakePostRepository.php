@@ -10,6 +10,9 @@ final class FakePostRepository implements PostRepository {
 	/** @var array<string, array{id:int, content_hash:?string}> */
 	private array $by_beehiiv_id = [];
 
+	/** @var array<string, array{id:int, content_hash:?string}> */
+	private array $by_slug = [];
+
 	/** @var array<int, array<string, mixed>> */
 	public array $inserted = [];
 
@@ -31,8 +34,19 @@ final class FakePostRepository implements PostRepository {
 		$this->by_beehiiv_id[ $beehiiv_id ] = [ 'id' => $post_id, 'content_hash' => $content_hash ];
 	}
 
-	public function find_by_beehiiv_id( string $beehiiv_id ): ?array {
-		return $this->by_beehiiv_id[ $beehiiv_id ] ?? null;
+	/** Seed a post discoverable only by slug (mimics a post imported by another tool). */
+	public function seed_slug( string $slug, int $post_id, ?string $content_hash ): void {
+		$this->by_slug[ $slug ] = [ 'id' => $post_id, 'content_hash' => $content_hash ];
+	}
+
+	public function find_existing( string $beehiiv_id, string $slug, string $post_type ): ?array {
+		if ( isset( $this->by_beehiiv_id[ $beehiiv_id ] ) ) {
+			return $this->by_beehiiv_id[ $beehiiv_id ];
+		}
+		if ( $slug !== '' && isset( $this->by_slug[ $slug ] ) ) {
+			return $this->by_slug[ $slug ];
+		}
+		return null;
 	}
 
 	public function insert( array $post_args ): int {

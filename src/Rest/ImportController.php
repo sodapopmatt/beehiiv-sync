@@ -5,12 +5,16 @@ namespace BeehiivSync\Rest;
 
 use BeehiivSync\Api\Client;
 use BeehiivSync\Api\Credentials;
+use BeehiivSync\Api\Exceptions\ApiException;
+use BeehiivSync\Api\Exceptions\AuthException;
+use BeehiivSync\Api\Exceptions\RateLimitException;
 use BeehiivSync\Api\WpHttpTransport;
 use BeehiivSync\Settings\Options;
 use BeehiivSync\Settings\Schema;
 use BeehiivSync\Sync\ContentSanitizer;
 use BeehiivSync\Sync\Importer;
 use BeehiivSync\Sync\ImportParams;
+use BeehiivSync\Sync\ImportPreview;
 use BeehiivSync\Sync\ItemProcessor;
 use BeehiivSync\Sync\PostMapper;
 use BeehiivSync\Sync\RunRepository;
@@ -28,6 +32,16 @@ final class ImportController extends Controller {
 	) {}
 
 	public function register_routes(): void {
+		register_rest_route(
+			self::NAMESPACE,
+			'/import/preview',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'preview' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+			]
+		);
+
 		register_rest_route(
 			self::NAMESPACE,
 			'/import',
@@ -52,28 +66,40 @@ final class ImportController extends Controller {
 		);
 	}
 
+	public function preview( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		if ( ! $this->credentials->exists() ) {
+			return new WP_Error( 'beehiiv_sync_no_credentials', 'Connect beehiiv credentials first.', [ 'status' => 400 ] );
+		}
+
+		$params  = $this->build_params( $request );
+		$preview = new ImportPreview(
+			$this->make_client(),
+			new PostMapper( new ContentSanitizer() ),
+			new WpPostRepository()
+		);
+
+		try {
+			$result = $preview->build( $params );
+		} catch ( AuthException $e ) {
+			return new WP_Error( 'beehiiv_sync_auth', $e->getMessage(), [ 'status' => 401 ] );
+		} catch ( RateLimitException $e ) {
+			return new WP_Error( 'beehiiv_sync_rate_limited', 'beehiiv rate limit hit while previewing. Try again shortly.', [ 'status' => 429 ] );
+		} catch ( ApiException $e ) {
+			return new WP_Error( 'beehiiv_sync_api', $e->getMessage(), [ 'status' => 502 ] );
+		}
+
+		return new WP_REST_Response( $result, 200 );
+	}
+
 	public function start( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		if ( ! $this->credentials->exists() ) {
 			return new WP_Error( 'beehiiv_sync_no_credentials', 'Connect beehiiv credentials first.', [ 'status' => 400 ] );
 		}
 
-		$body  = $request->get_json_params();
-		$input = is_array( $body ) ? $body : $request->get_params();
-		$input = is_array( $input ) ? $input : [];
-
-		$persisted_defaults = $this->options->all()['defaults'];
-
-		$override_defaults = is_array( $input['defaults'] ?? null ) ? $input['defaults'] : [];
-		$merged_defaults   = Schema::sanitize_defaults( $persisted_defaults, $override_defaults );
-
-		$params = ImportParams::build( $input, $merged_defaults );
+		$params = $this->build_params( $request );
 
 		$importer = new Importer(
-			new Client(
-				(string) $this->credentials->api_key(),
-				(string) $this->credentials->publication_id(),
-				new WpHttpTransport()
-			),
+			$this->make_client(),
 			new ItemProcessor( new PostMapper( new ContentSanitizer() ), new WpPostRepository() ),
 			$this->runs,
 		);
@@ -81,6 +107,26 @@ final class ImportController extends Controller {
 		$run_id = $importer->start( $params );
 
 		return new WP_REST_Response( [ 'run_id' => $run_id, 'status' => 'queued' ], 202 );
+	}
+
+	private function build_params( WP_REST_Request $request ): ImportParams {
+		$body  = $request->get_json_params();
+		$input = is_array( $body ) ? $body : $request->get_params();
+		$input = is_array( $input ) ? $input : [];
+
+		$persisted_defaults = $this->options->all()['defaults'];
+		$override_defaults  = is_array( $input['defaults'] ?? null ) ? $input['defaults'] : [];
+		$merged_defaults    = Schema::sanitize_defaults( $persisted_defaults, $override_defaults );
+
+		return ImportParams::build( $input, $merged_defaults );
+	}
+
+	private function make_client(): Client {
+		return new Client(
+			(string) $this->credentials->api_key(),
+			(string) $this->credentials->publication_id(),
+			new WpHttpTransport()
+		);
 	}
 
 	public function status( WP_REST_Request $request ): WP_REST_Response|WP_Error {
