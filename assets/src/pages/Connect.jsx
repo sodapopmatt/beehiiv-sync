@@ -29,7 +29,7 @@ export default function Connect( { status, onChange } ) {
 			setApiKey( '' );
 			setMessage( {
 				status: 'success',
-				text: __( 'Connected to ', 'beehiiv-sync' ) + ( result.publication?.name || publicationId ),
+				text: __( 'Connected to ', 'beehiiv-sync' ) + ( result.publication_name || publicationId ),
 			} );
 			onChange();
 		} catch ( e ) {
@@ -46,7 +46,7 @@ export default function Connect( { status, onChange } ) {
 			const result = await api.testCredentials( {} );
 			setMessage( {
 				status: 'success',
-				text: __( 'OK: ', 'beehiiv-sync' ) + ( result.publication?.name || publicationId ),
+				text: __( 'OK: ', 'beehiiv-sync' ) + ( result.publication_name || publicationId ),
 			} );
 		} catch ( e ) {
 			setMessage( { status: 'error', text: e.message } );
@@ -83,7 +83,12 @@ export default function Connect( { status, onChange } ) {
 					{ status.configured ? (
 						<>
 							<p>
-								{ __( 'Connected to publication: ', 'beehiiv-sync' ) }
+								{ __( 'Connected to: ', 'beehiiv-sync' ) }
+								{ status.publication_name ? (
+									<>
+										<strong>{ status.publication_name }</strong>{ ' ' }
+									</>
+								) : null }
 								<code>{ status.publication_id }</code>
 							</p>
 							<HStack justify="flex-start">
@@ -109,7 +114,7 @@ export default function Connect( { status, onChange } ) {
 								label={ __( 'Publication ID', 'beehiiv-sync' ) }
 								value={ publicationId }
 								onChange={ setPublicationId }
-								help={ __( 'Found in your beehiiv dashboard URL.', 'beehiiv-sync' ) }
+								help={ __( 'Found in your Beehiiv dashboard URL.', 'beehiiv-sync' ) }
 								__nextHasNoMarginBottom
 							/>
 							<HStack justify="flex-start">

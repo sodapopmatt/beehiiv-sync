@@ -73,10 +73,28 @@ final class CredentialsController extends Controller {
 	}
 
 	public function get_status( WP_REST_Request $request ): WP_REST_Response {
+		$name = $this->credentials->publication_name();
+
+		// Backfill the cached name for accounts connected before we stored it.
+		// Best-effort: one API call until it succeeds, then it's persisted.
+		if ( $this->credentials->exists() && ( $name === null || $name === '' ) ) {
+			$probe = $this->probe(
+				(string) $this->credentials->api_key(),
+				(string) $this->credentials->publication_id()
+			);
+			if ( ! $probe instanceof WP_Error ) {
+				$name = $this->extract_name( $probe );
+				if ( $name !== '' ) {
+					$this->credentials->set_publication_name( $name );
+				}
+			}
+		}
+
 		return new WP_REST_Response(
 			[
-				'configured'     => $this->credentials->exists(),
-				'publication_id' => $this->credentials->publication_id(),
+				'configured'       => $this->credentials->exists(),
+				'publication_id'   => $this->credentials->publication_id(),
+				'publication_name' => $name ?: null,
 			]
 		);
 	}
@@ -94,12 +112,14 @@ final class CredentialsController extends Controller {
 			return $probe;
 		}
 
-		$this->credentials->store( $api_key, $publication_id );
+		$name = $this->extract_name( $probe );
+		$this->credentials->store( $api_key, $publication_id, $name );
 
 		return new WP_REST_Response(
 			[
-				'configured'  => true,
-				'publication' => $probe,
+				'configured'       => true,
+				'publication'      => $probe,
+				'publication_name' => $name ?: null,
 			]
 		);
 	}
@@ -122,7 +142,34 @@ final class CredentialsController extends Controller {
 			return $probe;
 		}
 
-		return new WP_REST_Response( [ 'ok' => true, 'publication' => $probe ] );
+		$name = $this->extract_name( $probe );
+		if ( $name !== '' && $this->credentials->exists() ) {
+			$this->credentials->set_publication_name( $name );
+		}
+
+		return new WP_REST_Response(
+			[
+				'ok'               => true,
+				'publication'      => $probe,
+				'publication_name' => $name ?: null,
+			]
+		);
+	}
+
+	/**
+	 * Pull the publication name out of a beehiiv publication response,
+	 * tolerating both the `{ data: { name } }` envelope and a flat shape.
+	 *
+	 * @param array<string, mixed> $probe
+	 */
+	private function extract_name( array $probe ): string {
+		if ( isset( $probe['data']['name'] ) ) {
+			return (string) $probe['data']['name'];
+		}
+		if ( isset( $probe['name'] ) ) {
+			return (string) $probe['name'];
+		}
+		return '';
 	}
 
 	/**

@@ -32,6 +32,26 @@ final class Credentials {
 		return (string) $stored['publication_id'];
 	}
 
+	public function publication_name(): ?string {
+		$stored = get_option( self::OPTION );
+		if ( ! is_array( $stored ) || empty( $stored['publication_name'] ) ) {
+			return null;
+		}
+		return (string) $stored['publication_name'];
+	}
+
+	/**
+	 * Update just the cached publication name without touching the API key.
+	 */
+	public function set_publication_name( string $name ): void {
+		$stored = get_option( self::OPTION );
+		if ( ! is_array( $stored ) ) {
+			return;
+		}
+		$stored['publication_name'] = $name;
+		update_option( self::OPTION, $stored, false );
+	}
+
 	public function api_key(): ?string {
 		$stored = get_option( self::OPTION );
 		if ( ! is_array( $stored ) || empty( $stored['api_key_encrypted'] ) ) {
@@ -40,10 +60,11 @@ final class Credentials {
 		return $this->crypto->decrypt( (string) $stored['api_key_encrypted'] );
 	}
 
-	public function store( string $api_key, string $publication_id ): void {
+	public function store( string $api_key, string $publication_id, string $publication_name = '' ): void {
 		$payload = [
 			'api_key_encrypted' => $this->crypto->encrypt( $api_key ),
 			'publication_id'    => $publication_id,
+			'publication_name'  => $publication_name,
 			'updated_at'        => time(),
 		];
 		update_option( self::OPTION, $payload, false );

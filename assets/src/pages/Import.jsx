@@ -184,7 +184,7 @@ export default function Import( { credentialsConfigured } ) {
 
 	const runPreview = async () => {
 		if ( selectedBeehiivStatuses().length === 0 ) {
-			setError( __( 'Pick at least one beehiiv status to import.', 'beehiiv-sync' ) );
+			setError( __( 'Pick at least one Beehiiv status to import.', 'beehiiv-sync' ) );
 			return;
 		}
 
@@ -291,7 +291,7 @@ export default function Import( { credentialsConfigured } ) {
 	if ( ! credentialsConfigured ) {
 		return (
 			<Notice status="warning" isDismissible={ false }>
-				{ __( 'Connect your beehiiv credentials first.', 'beehiiv-sync' ) }
+				{ __( 'Connect your Beehiiv credentials first.', 'beehiiv-sync' ) }
 			</Notice>
 		);
 	}
@@ -327,7 +327,7 @@ export default function Import( { credentialsConfigured } ) {
 			{ /* Step 1 */ }
 			<Card>
 				<CardHeader>
-					<Heading level={ 4 }>{ __( 'Step 1: Choose data from beehiiv', 'beehiiv-sync' ) }</Heading>
+					<Heading level={ 4 }>{ __( 'Step 1: Choose data from Beehiiv', 'beehiiv-sync' ) }</Heading>
 				</CardHeader>
 				<CardBody>
 					<VStack spacing={ 4 }>
@@ -345,10 +345,11 @@ export default function Import( { credentialsConfigured } ) {
 
 						<Divider />
 
-						<div className="bs-section-label">
-							{ __( 'Beehiiv status → WordPress status', 'beehiiv-sync' ) }
-						</div>
-						<div>
+						<div className="bs-status-grid">
+							<div className="bs-status-header">
+								<span>{ __( 'Beehiiv Status', 'beehiiv-sync' ) }</span>
+								<span>{ __( 'WordPress Status', 'beehiiv-sync' ) }</span>
+							</div>
 							{ BEEHIIV_STATUSES.map( ( bs ) => (
 								<div key={ bs.value } className="bs-status-row">
 									<CheckboxControl
@@ -420,7 +421,7 @@ export default function Import( { credentialsConfigured } ) {
 								__nextHasNoMarginBottom
 							/>
 							<SelectControl
-								label={ __( 'Import beehiiv tags as', 'beehiiv-sync' ) }
+								label={ __( 'Import Beehiiv tags as', 'beehiiv-sync' ) }
 								value={ tagTarget }
 								options={ [
 									{ value: 'post_tag', label: __( 'Post Tag', 'beehiiv-sync' ) },
@@ -566,7 +567,7 @@ function PreviewTable( { preview, selected, onToggleRow, allSelected, onToggleAl
 									/>
 								</th>
 								<th>{ __( 'Title', 'beehiiv-sync' ) }</th>
-								<th style={ { width: 110 } }>{ __( 'beehiiv status', 'beehiiv-sync' ) }</th>
+								<th style={ { width: 110 } }>{ __( 'Beehiiv Status', 'beehiiv-sync' ) }</th>
 								<th style={ { width: 120 } }>{ __( 'Publish date', 'beehiiv-sync' ) }</th>
 								<th style={ { width: 90 } }>{ __( 'Action', 'beehiiv-sync' ) }</th>
 							</tr>

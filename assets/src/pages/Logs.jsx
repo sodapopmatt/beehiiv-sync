@@ -116,7 +116,7 @@ export default function Logs() {
 					<VStack spacing={ 4 }>
 						<p>
 							{ __(
-								'Pulls one beehiiv post via the same path the importer uses and dumps the request URL, response, extracted content lengths, and the result after sanitization. Use this to find where content is getting lost.',
+								'Pulls one Beehiiv post via the same path the importer uses and dumps the request URL, response, extracted content lengths, and the result after sanitization. Use this to find where content is getting lost.',
 								'beehiiv-sync'
 							) }
 						</p>
