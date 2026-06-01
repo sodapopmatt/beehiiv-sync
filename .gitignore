@@ -2,5 +2,7 @@
 /node_modules/
 /build/
 composer.lock
+composer.phar
 package-lock.json
 .phpunit.result.cache
+.phpunit.cache/

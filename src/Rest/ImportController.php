@@ -81,11 +81,15 @@ final class ImportController extends Controller {
 		try {
 			$result = $preview->build( $params );
 		} catch ( AuthException $e ) {
-			return new WP_Error( 'beehiiv_sync_auth', $e->getMessage(), [ 'status' => 401 ] );
+			return new WP_Error( 'beehiiv_sync_auth', 'Beehiiv rejected your credentials. Reconnect them and try again.', [ 'status' => 401 ] );
 		} catch ( RateLimitException $e ) {
-			return new WP_Error( 'beehiiv_sync_rate_limited', 'beehiiv rate limit hit while previewing. Try again shortly.', [ 'status' => 429 ] );
+			return new WP_Error( 'beehiiv_sync_rate_limited', 'Beehiiv rate limit hit while previewing. Try again shortly.', [ 'status' => 429 ] );
 		} catch ( ApiException $e ) {
-			return new WP_Error( 'beehiiv_sync_api', $e->getMessage(), [ 'status' => 502 ] );
+			$upstream = $e->status_code ?? 0;
+			$message  = $upstream >= 500
+				? sprintf( 'Beehiiv returned a server error (HTTP %d) while previewing. It may be temporarily overloaded — please wait a moment and try again.', $upstream )
+				: $e->getMessage();
+			return new WP_Error( 'beehiiv_sync_api', $message, [ 'status' => 502 ] );
 		}
 
 		return new WP_REST_Response( $result, 200 );

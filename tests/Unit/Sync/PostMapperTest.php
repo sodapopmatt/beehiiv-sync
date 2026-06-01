@@ -47,11 +47,13 @@ final class PostMapperTest extends TestCase {
 		self::assertSame( ImportPlan::ACTION_INSERT, $plan->action );
 		self::assertNull( $plan->existing_post_id );
 		self::assertSame( 'Hello world', $plan->post_args['post_title'] );
-		self::assertSame( 'publish', $plan->post_args['post_status'] );
+		// confirmed → draft per the default post_status_map.
+		self::assertSame( 'draft', $plan->post_args['post_status'] );
 		self::assertSame( 'post_1', $plan->meta['_beehiiv_post_id'] );
 		self::assertSame( 'https://cdn/x.jpg', $plan->featured_image_url );
 		self::assertCount( 1, $plan->term_assignments );
-		self::assertSame( 'category', $plan->term_assignments[0]['taxonomy'] );
+		// Tags map to post_tag by default (tag_target default = 'post_tag').
+		self::assertSame( 'post_tag', $plan->term_assignments[0]['taxonomy'] );
 		self::assertSame( [ 'news' ], $plan->term_assignments[0]['term_names'] );
 	}
 
@@ -148,15 +150,25 @@ final class PostMapperTest extends TestCase {
 	}
 
 	public function test_premium_only_content_falls_back_to_premium(): void {
-		$plan = $this->mapper()->plan(
-			$this->beehiiv(
-				[
-					'audience' => 'premium',
-					'content'  => [ 'premium' => [ 'web' => '<p>Paid</p>' ] ],
-				]
-			),
-			$this->defaults(),
+		// A premium-only post has no free content (the API only expands
+		// premium_web_content for a premium audience). Build it directly: the
+		// beehiiv() fixture always seeds free content, and array merging can't
+		// remove it, so the merge helper can't express "premium only".
+		$post = BeehiivPost::from_array(
+			[
+				'id'           => 'post_1',
+				'title'        => 'Hello world',
+				'slug'         => 'hello-world',
+				'status'       => 'confirmed',
+				'audience'     => 'premium',
+				'publish_date' => 1700000000,
+				'content'      => [ 'premium' => [ 'web' => '<p>Paid</p>' ] ],
+				'content_tags' => [ 'news' ],
+			]
 		);
+
+		$plan = $this->mapper()->plan( $post, $this->defaults() );
+
 		self::assertStringContainsString( 'Paid', $plan->post_args['post_content'] );
 		self::assertSame( 'premium', $plan->meta['_beehiiv_audience'] );
 	}

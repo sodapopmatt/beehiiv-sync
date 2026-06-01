@@ -30,7 +30,7 @@ final class SchemaTest extends TestCase {
 		$out = Schema::sanitize( Schema::defaults(), [ 'defaults' => [ 'audience' => 'premium' ] ] );
 		self::assertSame( 'premium', $out['defaults']['audience'] );
 		self::assertSame( 'post', $out['defaults']['post_type'] );
-		self::assertSame( 'category', $out['defaults']['tag_target'] );
+		self::assertSame( 'post_tag', $out['defaults']['tag_target'] );
 	}
 
 	public function test_sanitize_accepts_valid_status_map(): void {
@@ -48,6 +48,7 @@ final class SchemaTest extends TestCase {
 			Schema::defaults(),
 			[ 'defaults' => [ 'post_status_map' => [ 'confirmed' => 'trash' ] ] ]
 		);
-		self::assertSame( 'publish', $out['defaults']['post_status_map']['confirmed'] );
+		// 'trash' is not a valid WP status, so the default ('draft') is preserved.
+		self::assertSame( 'draft', $out['defaults']['post_status_map']['confirmed'] );
 	}
 }

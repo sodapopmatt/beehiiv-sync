@@ -28,7 +28,9 @@ final class ImportParamsTest extends TestCase {
 			[ 'beehiiv_statuses' => [ 'confirmed', 'trash', 'draft' ] ],
 			$this->defaults()
 		);
-		self::assertSame( [ 'confirmed', 'draft' ], $p->beehiiv_statuses );
+		// Statuses are normalized to the canonical order (draft, confirmed,
+		// archived), not the order the caller passed them in.
+		self::assertSame( [ 'draft', 'confirmed' ], $p->beehiiv_statuses );
 	}
 
 	public function test_empty_status_list_falls_back_to_confirmed(): void {

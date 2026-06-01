@@ -37,6 +37,17 @@ const ACTION_META = {
 	skip: { label: __( 'Skip', 'beehiiv-sync' ), color: '#888' },
 };
 
+// apiFetch rejects with the parsed REST error ({ code, message, data }) on a
+// WP_Error response, but with a bare Error (or nothing useful) on a network
+// failure or non-JSON 5xx. Always fall back to a readable message so the error
+// Notice is never blank.
+function apiErrorMessage( e, fallback ) {
+	if ( e && typeof e.message === 'string' && e.message.trim() !== '' ) {
+		return e.message;
+	}
+	return fallback;
+}
+
 function formatDate( ts ) {
 	if ( ! ts ) return '—';
 	try {
@@ -81,6 +92,7 @@ export default function Import( { credentialsConfigured } ) {
 	const [ preview, setPreview ] = useState( null );
 	const [ selected, setSelected ] = useState( {} );
 	const [ previewing, setPreviewing ] = useState( false );
+	const [ previewElapsed, setPreviewElapsed ] = useState( 0 );
 
 	// Run state
 	const [ runId, setRunId ] = useState( null );
@@ -152,6 +164,22 @@ export default function Import( { credentialsConfigured } ) {
 		} )();
 	}, [ fixedTaxonomy, taxonomies ] );
 
+	// Tick an elapsed-seconds counter while a preview is in flight. The preview
+	// is one blocking request that walks every page server-side, so this is the
+	// only progress signal we can surface — but it tells the user it's working
+	// and sets expectations for large publications.
+	useEffect( () => {
+		if ( ! previewing ) {
+			setPreviewElapsed( 0 );
+			return;
+		}
+		const started = Date.now();
+		const id = setInterval( () => {
+			setPreviewElapsed( Math.floor( ( Date.now() - started ) / 1000 ) );
+		}, 1000 );
+		return () => clearInterval( id );
+	}, [ previewing ] );
+
 	// Changing what to pull from beehiiv invalidates an existing preview.
 	const statusesKey = JSON.stringify( selectedStatuses );
 	useEffect( () => {
@@ -203,7 +231,15 @@ export default function Import( { credentialsConfigured } ) {
 			} );
 			setSelected( next );
 		} catch ( e ) {
-			setError( e.message );
+			setError(
+				apiErrorMessage(
+					e,
+					__(
+						'Preview failed. Beehiiv may be temporarily busy or returned an unexpected response — please wait a moment and try again.',
+						'beehiiv-sync'
+					)
+				)
+			);
 			setPreview( null );
 		} finally {
 			setPreviewing( false );
@@ -260,7 +296,12 @@ export default function Import( { credentialsConfigured } ) {
 			};
 			pollRef.current = setTimeout( tick, 500 );
 		} catch ( e ) {
-			setError( e.message );
+			setError(
+				apiErrorMessage(
+					e,
+					__( 'Could not start the import. Please try again.', 'beehiiv-sync' )
+				)
+			);
 			setRun( null );
 		} finally {
 			setStarting( false );
@@ -275,7 +316,12 @@ export default function Import( { credentialsConfigured } ) {
 				clearTimeout( pollRef.current );
 			}
 		} catch ( e ) {
-			setError( e.message );
+			setError(
+				apiErrorMessage(
+					e,
+					__( 'Lost contact with the import while checking its progress.', 'beehiiv-sync' )
+				)
+			);
 			clearTimeout( pollRef.current );
 		}
 	};
@@ -475,6 +521,33 @@ export default function Import( { credentialsConfigured } ) {
 						</Button>
 					) }
 				</HStack>
+			) }
+
+			{ previewing && (
+				<Notice status="info" isDismissible={ false }>
+					<HStack justify="flex-start" spacing={ 2 } expanded={ false }>
+						<Spinner />
+						<span>
+							{ sprintf(
+								/* translators: %d: seconds elapsed */
+								__(
+									'Fetching posts from Beehiiv and checking what would import… (%ds)',
+									'beehiiv-sync'
+								),
+								previewElapsed
+							) }
+							{ previewElapsed >= 10 && (
+								<>
+									{ ' ' }
+									{ __(
+										'Large publications can take up to a minute.',
+										'beehiiv-sync'
+									) }
+								</>
+							) }
+						</span>
+					</HStack>
+				</Notice>
 			) }
 
 			{ preview && ! run && (

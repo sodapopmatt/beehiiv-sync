@@ -42,7 +42,7 @@ final class ItemProcessorTest extends TestCase {
 		self::assertNotNull( $result->post_id );
 		self::assertCount( 1, $repo->inserted );
 		self::assertSame( 'post_1', $repo->meta[ $result->post_id ]['_beehiiv_post_id'] );
-		self::assertSame( 'category', $repo->terms[ $result->post_id ][0]['taxonomy'] );
+		self::assertSame( 'post_tag', $repo->terms[ $result->post_id ][0]['taxonomy'] );
 		self::assertSame( 'https://cdn/x.jpg', $repo->featured[ $result->post_id ] );
 	}
 

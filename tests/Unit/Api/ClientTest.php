@@ -13,7 +13,8 @@ use PHPUnit\Framework\TestCase;
 final class ClientTest extends TestCase {
 
 	private function client( FakeTransport $transport ): Client {
-		return new Client( 'sk_test', 'pub_123', $transport );
+		// No-op sleeper so retry backoff doesn't actually pause the suite.
+		return new Client( 'sk_test', 'pub_123', $transport, Client::BASE_URL, Client::MAX_RETRIES, static fn( int $s ) => null );
 	}
 
 	public function test_get_publication_sends_bearer_and_returns_decoded_body(): void {
@@ -101,10 +102,35 @@ final class ClientTest extends TestCase {
 		}
 	}
 
-	public function test_5xx_throws_api_exception(): void {
-		$transport = new FakeTransport( [ [ 'status' => 503, 'body' => 'oops' ] ] );
-		$this->expectException( ApiException::class );
-		$this->client( $transport )->get_publication();
+	public function test_5xx_throws_api_exception_after_exhausting_retries(): void {
+		// MAX_RETRIES = 2 → 3 attempts total, all 503.
+		$transport = new FakeTransport(
+			[
+				[ 'status' => 503, 'body' => 'oops' ],
+				[ 'status' => 503, 'body' => 'oops' ],
+				[ 'status' => 503, 'body' => 'oops' ],
+			]
+		);
+		try {
+			$this->client( $transport )->get_publication();
+			self::fail( 'Expected ApiException.' );
+		} catch ( ApiException $e ) {
+			self::assertCount( 3, $transport->calls );
+		}
+	}
+
+	public function test_transient_5xx_is_retried_then_succeeds(): void {
+		$transport = new FakeTransport(
+			[
+				[ 'status' => 503, 'body' => 'temporary' ],
+				[ 'status' => 200, 'body' => '{"id":"pub_123","name":"My Newsletter"}' ],
+			]
+		);
+
+		$result = $this->client( $transport )->get_publication();
+
+		self::assertSame( 'My Newsletter', $result['name'] );
+		self::assertCount( 2, $transport->calls );
 	}
 
 	public function test_non_json_body_throws(): void {

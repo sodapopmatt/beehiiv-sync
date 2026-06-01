@@ -12,14 +12,20 @@ use BeehiivSync\Support\Logger;
 
 final class Client {
 
-	public const BASE_URL = 'https://api.beehiiv.com/v2';
-	public const TIMEOUT  = 30;
+	public const BASE_URL    = 'https://api.beehiiv.com/v2';
+	public const TIMEOUT     = 30;
+	public const MAX_RETRIES = 2;
 
+	/**
+	 * @param callable(int):void|null $sleeper Sleep implementation, injectable for tests. Defaults to PHP `sleep`.
+	 */
 	public function __construct(
 		private readonly string $api_key,
 		private readonly string $publication_id,
 		private readonly HttpTransport $transport,
 		private readonly string $base_url = self::BASE_URL,
+		private readonly int $max_retries = self::MAX_RETRIES,
+		private $sleeper = null,
 	) {}
 
 	/**
@@ -94,20 +100,42 @@ final class Client {
 			],
 		];
 
-		$response = $this->transport->request( $url, $args );
-		$status   = $response['status'];
+		$attempt  = 0;
+		$response = [ 'status' => 0, 'headers' => [], 'body' => '' ];
 
-		if ( class_exists( Logger::class ) ) {
-			Logger::info(
-				'beehiiv.request',
-				[
-					'method'      => $method,
-					'url'         => $url,
-					'status'      => $status,
-					'body_length' => strlen( $response['body'] ?? '' ),
-				]
-			);
+		while ( true ) {
+			$response = $this->transport->request( $url, $args );
+			$status   = $response['status'];
+
+			if ( class_exists( Logger::class ) ) {
+				Logger::info(
+					'beehiiv.request',
+					[
+						'method'      => $method,
+						'url'         => $url,
+						'status'      => $status,
+						'attempt'     => $attempt,
+						'body_length' => strlen( $response['body'] ?? '' ),
+					]
+				);
+			}
+
+			// beehiiv intermittently returns 5xx on heavy expanded post pages
+			// (the full HTML bodies push responses into the multi-MB range).
+			// These are transient, so back off and retry rather than letting a
+			// single bad page abort an entire preview/import.
+			if ( $status >= 500 && $attempt < $this->max_retries ) {
+				$delay   = 2 ** $attempt; // 1s, 2s, 4s, ...
+				$sleeper = is_callable( $this->sleeper ) ? $this->sleeper : 'sleep';
+				$sleeper( $delay );
+				$attempt++;
+				continue;
+			}
+
+			break;
 		}
+
+		$status = $response['status'];
 
 		if ( $status === 401 || $status === 403 ) {
 			throw new AuthException(
