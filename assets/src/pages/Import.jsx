@@ -314,6 +314,26 @@ export default function Import( { credentialsConfigured } ) {
 			setRun( next );
 			if ( next.status === 'completed' || next.status === 'failed' ) {
 				clearTimeout( pollRef.current );
+				return;
+			}
+			// If the run has been queued for more than 90 seconds without any
+			// activity, Action Scheduler likely isn't processing it (WP-Cron
+			// may be disabled or the async runner failed). Surface a message
+			// so the user knows what to check rather than waiting forever.
+			const now = Math.floor( Date.now() / 1000 );
+			const idle = now - ( next.last_event_at ?? now );
+			if ( next.status === 'queued' && idle > 90 ) {
+				setError(
+					__(
+						'The import has been queued for over 90 seconds without starting. Action Scheduler may not be processing actions — check that WP-Cron is enabled, or run "wp action-scheduler run" via WP-CLI.',
+						'beehiiv-sync'
+					)
+				);
+				// Mark the run as failed in local state so the "Start another
+				// import" button appears. The server-side run remains queued
+				// (AS may still process it later), but the user needs a way out.
+				setRun( ( prev ) => prev ? { ...prev, status: 'failed' } : prev );
+				clearTimeout( pollRef.current );
 			}
 		} catch ( e ) {
 			setError(

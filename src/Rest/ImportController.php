@@ -108,7 +108,11 @@ final class ImportController extends Controller {
 			$this->runs,
 		);
 
-		$run_id = $importer->start( $params );
+		try {
+			$run_id = $importer->start( $params );
+		} catch ( \Throwable $e ) {
+			return new WP_Error( 'beehiiv_sync_schedule_failed', $e->getMessage(), [ 'status' => 500 ] );
+		}
 
 		return new WP_REST_Response( [ 'run_id' => $run_id, 'status' => 'queued' ], 202 );
 	}

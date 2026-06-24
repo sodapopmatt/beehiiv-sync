@@ -45,7 +45,7 @@ final class Importer {
 
 		$this->runs->save( $run );
 
-		as_schedule_single_action(
+		$action_id = as_schedule_single_action(
 			time(),
 			self::HOOK_FETCH_PAGE,
 			[
@@ -57,6 +57,11 @@ final class Importer {
 			],
 			self::GROUP
 		);
+
+		if ( ! $action_id ) {
+			$this->runs->delete( $run_id );
+			throw new \RuntimeException( 'Action Scheduler could not queue the import action. Check that its database tables exist and that WP-Cron is enabled.' );
+		}
 
 		return $run_id;
 	}
