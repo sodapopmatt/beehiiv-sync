@@ -5,6 +5,7 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
+	CheckboxControl,
 	Notice,
 	SelectControl,
 	Spinner,
@@ -17,6 +18,8 @@ export default function Logs() {
 	const [ log, setLog ] = useState( null );
 	const [ error, setError ] = useState( null );
 	const [ loading, setLoading ] = useState( false );
+	const [ logEnabled, setLogEnabled ] = useState( false );
+	const [ togglingLog, setTogglingLog ] = useState( false );
 
 	const [ sampleStatus, setSampleStatus ] = useState( 'draft' );
 	const [ sample, setSample ] = useState( null );
@@ -26,7 +29,12 @@ export default function Logs() {
 		setLoading( true );
 		setError( null );
 		try {
-			setLog( await api.getDebugLog() );
+			const [ logData, enabledData ] = await Promise.all( [
+				api.getDebugLog(),
+				api.getLogEnabled(),
+			] );
+			setLog( logData );
+			setLogEnabled( enabledData.enabled );
 		} catch ( e ) {
 			setError( e.message );
 		} finally {
@@ -37,6 +45,18 @@ export default function Logs() {
 	useEffect( () => {
 		refresh();
 	}, [] );
+
+	const toggleLogEnabled = async ( checked ) => {
+		setTogglingLog( true );
+		try {
+			const result = await api.setLogEnabled( checked );
+			setLogEnabled( result.enabled );
+		} catch ( e ) {
+			setError( e.message );
+		} finally {
+			setTogglingLog( false );
+		}
+	};
 
 	const clearLog = async () => {
 		try {
@@ -71,12 +91,21 @@ export default function Logs() {
 			<Card>
 				<CardHeader>
 					<HStack justify="space-between">
-						<strong>{ __( 'Debug log', 'beehiiv-sync' ) }</strong>
+						<HStack spacing={ 3 } justify="flex-start">
+							<strong>{ __( 'Debug log', 'beehiiv-sync' ) }</strong>
+							<CheckboxControl
+								label={ __( 'Enable', 'beehiiv-sync' ) }
+								checked={ logEnabled }
+								onChange={ toggleLogEnabled }
+								disabled={ togglingLog }
+								__nextHasNoMarginBottom
+							/>
+						</HStack>
 						<HStack spacing={ 2 }>
 							<Button variant="secondary" onClick={ refresh } disabled={ loading }>
 								{ __( 'Refresh', 'beehiiv-sync' ) }
 							</Button>
-							<Button variant="tertiary" isDestructive onClick={ clearLog }>
+							<Button variant="tertiary" isDestructive onClick={ clearLog } disabled={ ! log?.tail }>
 								{ __( 'Clear', 'beehiiv-sync' ) }
 							</Button>
 						</HStack>

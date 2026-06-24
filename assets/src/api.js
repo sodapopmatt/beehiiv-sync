@@ -39,6 +39,9 @@ export const api = {
 
 	getDebugLog: () => apiFetch( { path: ns( '/diagnostics/log' ) } ),
 	clearDebugLog: () => apiFetch( { path: ns( '/diagnostics/log' ), method: 'DELETE' } ),
+	getLogEnabled: () => apiFetch( { path: ns( '/diagnostics/log/enabled' ) } ),
+	setLogEnabled: ( enabled ) =>
+		apiFetch( { path: ns( '/diagnostics/log/enabled' ), method: 'POST', data: { enabled } } ),
 	getDiagnosticSample: ( status = 'draft', audience = 'all' ) =>
 		apiFetch( {
 			path: ns( `/diagnostics/sample?status=${ status }&audience=${ audience }` ),

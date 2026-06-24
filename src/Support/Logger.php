@@ -16,16 +16,30 @@ final class Logger {
 	private const FILENAME     = 'debug.log';
 	private const ROTATE_BYTES = 1_048_576;
 
+	public static function is_enabled(): bool {
+		// Constant wins so developers can force-enable from wp-config.php.
+		if ( defined( 'BS_DEBUG_LOG' ) ) {
+			return (bool) BS_DEBUG_LOG;
+		}
+		return (bool) get_option( 'beehiiv_sync_debug_log', false );
+	}
+
 	public static function info( string $event, array $context = [] ): void {
-		self::write( 'INFO', $event, $context );
+		if ( self::is_enabled() ) {
+			self::write( 'INFO', $event, $context );
+		}
 	}
 
 	public static function warn( string $event, array $context = [] ): void {
-		self::write( 'WARN', $event, $context );
+		if ( self::is_enabled() ) {
+			self::write( 'WARN', $event, $context );
+		}
 	}
 
 	public static function error( string $event, array $context = [] ): void {
-		self::write( 'ERROR', $event, $context );
+		if ( self::is_enabled() ) {
+			self::write( 'ERROR', $event, $context );
+		}
 	}
 
 	public static function clear(): bool {

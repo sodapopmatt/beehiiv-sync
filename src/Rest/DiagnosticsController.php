@@ -29,6 +29,26 @@ final class DiagnosticsController extends Controller {
 	public function register_routes(): void {
 		register_rest_route(
 			self::NAMESPACE,
+			'/diagnostics/log/enabled',
+			[
+				[
+					'methods'             => 'GET',
+					'callback'            => [ $this, 'get_log_enabled' ],
+					'permission_callback' => [ $this, 'check_permission' ],
+				],
+				[
+					'methods'             => 'POST',
+					'callback'            => [ $this, 'set_log_enabled' ],
+					'permission_callback' => [ $this, 'check_permission' ],
+					'args'                => [
+						'enabled' => [ 'type' => 'boolean', 'required' => true ],
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/diagnostics/sample',
 			[
 				'methods'             => 'GET',
@@ -57,6 +77,16 @@ final class DiagnosticsController extends Controller {
 				],
 			]
 		);
+	}
+
+	public function get_log_enabled( WP_REST_Request $request ): WP_REST_Response {
+		return new WP_REST_Response( [ 'enabled' => Logger::is_enabled() ] );
+	}
+
+	public function set_log_enabled( WP_REST_Request $request ): WP_REST_Response {
+		$enabled = (bool) $request->get_param( 'enabled' );
+		update_option( 'beehiiv_sync_debug_log', $enabled, false );
+		return new WP_REST_Response( [ 'enabled' => $enabled ] );
 	}
 
 	public function read_log( WP_REST_Request $request ): WP_REST_Response {
